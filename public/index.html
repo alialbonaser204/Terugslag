@@ -91,6 +91,7 @@
 <div id="hud">
   <div class="pill" id="lvlInfo">LEVEL 1<small id="enemyCount">Vijanden: 1</small></div>
   <div id="hearts"><span>♥</span><span>♥</span><span>♥</span></div>
+  <div class="pill" id="roundInfo" style="display:none">RONDE 1</div>
   <div class="hudBtns">
     <button class="iconBtn" id="muteBtn" aria-label="Geluid">🔊</button>
     <button class="iconBtn" id="pauseBtn" aria-label="Pauze">❚❚</button>
@@ -992,7 +993,7 @@ const menuGun=makeGun(0xe9eef6,0x2b3446,0x29d3ff,2.2);menuGun.g.visible=false;
 
 /* ---------- online 1v1 ---------- */
 const DUEL_ARENA=[{x:0,y:9.5,w:2.6,h:0.7}];
-const WIN_ROUNDS=3;
+const WIN_ROUNDS=2, ONLINE_HP=1; // best of 3, one bullet = out
 const NET={room:null,user:null,duel:null,code:null,host:false,oppPeer:null,oppBy:null,oppName:'Tegenstander',
   match:1,losses:0,oppLosses:0,phase:'idle',phaseT:0,lastCount:0,seq:0,shots:[],oppSeq:-1,oppHp:3,rematch:0,
   lastSend:0,unsubs:[],names:{}};
@@ -1134,7 +1135,7 @@ function handleOpp(ps){
     sfx.eshot(bx,'pistol');
   }
   // hp / death
-  const hp=typeof ps.hp==='number'?ps.hp:3;
+  const hp=typeof ps.hp==='number'?ps.hp:ONLINE_HP;
   if(hp<NET.oppHp&&OPP.alive&&!ps.dead){OPP.hitT=0.15;burst(OPP.x,OPP.y,12,[0xffffff,0xc04bff,0xffd86b],7,0.1,0.45);sfx.hit(OPP.x);}
   NET.oppHp=hp;
   const losses=typeof ps.losses==='number'?ps.losses:0;
@@ -1165,20 +1166,20 @@ function startDuel(){
   addPilot(pg,myFace());
   const og=makeGun(0x5a1e9a,0x17181e,0xd28bff,1);addPilot(og,NET.oppFace!=null?NET.oppFace:(NET.host?1:0));scene.add(og.g);levelObjs.push(og.g);OPP.gun=og;
   for(const o of DUEL_ARENA){const m=addBox(o.w,o.h,1.5,o.x,o.y,0,crateMat);levelObjs.push(m);obstacles.push(o);}
-  NET.match=1;NET.losses=0;NET.oppLosses=0;NET.rematch=0;NET.oppHp=3;
+  NET.match=1;NET.losses=0;NET.oppLosses=0;NET.rematch=0;NET.oppHp=ONLINE_HP;
   $('#hud').classList.add('on');
-  setHint('Eerste die '+WIN_ROUNDS+' rondes wint, wint het duel!',true);G.hintT=4;
+  setHint('Best of 3 — één kogel en je ligt eruit!',true);G.hintT=4;
   mode='play';
   startRound();
 }
 function startRound(){
   const side=NET.host?-1:1,p=player;
   bullets.forEach(b=>b.mesh.visible=false);bullets=[];
-  Object.assign(p,{x:side*3.6,y:8.5,y0:8.5,vx:0,vy:0,a:-Math.PI/2,w:0,dir:1,hp:3,inv:0,cool:0,started:false,dead:false});
+  Object.assign(p,{x:side*3.6,y:8.5,y0:8.5,vx:0,vy:0,a:-Math.PI/2,w:0,dir:1,hp:ONLINE_HP,inv:0,cool:0,started:false,dead:false});
   p.gun.g.visible=true;
   Object.assign(OPP,{x:-side*3.6,y:8.5,tx:-side*3.6,ty:8.5,a:-Math.PI/2,ta:-Math.PI/2,vx:0,vy:0,w:0,alive:true,hitT:0,seen:false});
   if(OPP.gun)OPP.gun.g.visible=true;
-  NET.oppHp=3;
+  NET.oppHp=ONLINE_HP;
   NET.phase='count';NET.phaseT=3;NET.phaseEnd=performance.now()/1000+3;NET.lastCount=4;
   updateHUD();sendNet(true);
 }
@@ -1193,12 +1194,12 @@ function updateOnline(rdt){
   const nowS=performance.now()/1000;
   if(NET.phase==='count'){
     NET.phaseT=NET.phaseEnd-nowS;const c=Math.ceil(NET.phaseT);
-    if(c!==NET.lastCount&&c>0){NET.lastCount=c;showBanner(String(c));tone(660,660,0.12,0.15,'triangle');}
+    if(c!==NET.lastCount&&c>0){NET.lastCount=c;showBanner(c===3?'RONDE '+(NET.losses+NET.oppLosses+1):String(c));tone(660,660,0.12,0.15,'triangle');}
     if(NET.phaseT<=0){NET.phase='fight';showBanner('VUUR!');tone(990,990,0.2,0.18,'triangle');}
   }else if(NET.phase==='roundEnd'){
     NET.phaseT=NET.phaseEnd-nowS;
     if(NET.phaseT<=0){
-      if(NET.losses>=WIN_ROUNDS||NET.oppLosses>=WIN_ROUNDS)matchOver();
+      if((NET.losses>=WIN_ROUNDS||NET.oppLosses>=WIN_ROUNDS)&&NET.losses!==NET.oppLosses)matchOver();
       else startRound();
     }
   }
@@ -1206,7 +1207,7 @@ function updateOnline(rdt){
 }
 function matchOver(){
   NET.phase='matchEnd';mode='result';setHint(null,false);
-  const win=NET.oppLosses>=WIN_ROUNDS&&NET.losses<WIN_ROUNDS,draw=NET.oppLosses>=WIN_ROUNDS&&NET.losses>=WIN_ROUNDS;
+  const win=NET.oppLosses>NET.losses,draw=NET.oppLosses===NET.losses;
   $('#resTitle').textContent=draw?'Gelijkspel!':win?'Jij wint!':'Verloren…';
   $('#resMsg').textContent=`${NET.oppLosses} – ${NET.losses} tegen ${NET.oppName}`;
   $('#stars').style.display='none';
@@ -1342,10 +1343,13 @@ function updateHUD(){
   if(!G)return;
   if(G.online){
     $('#lvlInfo').firstChild.nodeValue='JIJ '+NET.oppLosses+' – '+NET.losses;
-    $('#enemyCount').textContent=NET.oppName.slice(0,14)+' '+'♥'.repeat(Math.max(0,NET.oppHp))+'♡'.repeat(Math.max(0,3-NET.oppHp));
-    [...$('#hearts').children].forEach((s,i)=>s.classList.toggle('lost',i>=player.hp));
+    $('#enemyCount').textContent='vs '+NET.oppName.slice(0,14);
+    $('#hearts').style.display='none';$('#roundInfo').style.display='';
+    const rn=Math.min(NET.losses+NET.oppLosses+(NET.phase==='roundEnd'||NET.phase==='matchEnd'?0:1),99);
+    $('#roundInfo').textContent=rn<=3?'RONDE '+Math.max(1,rn)+'/3':'BESLISSENDE RONDE';
     return;
   }
+  $('#hearts').style.display='';$('#roundInfo').style.display='none';
   const left=enemies.filter(e=>e.alive).length;
   $('#lvlInfo').firstChild.nodeValue='LEVEL '+(G.level+1);
   $('#enemyCount').textContent='Vijanden: '+left;
