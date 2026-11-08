@@ -315,8 +315,10 @@ try{muted=localStorage.getItem('terugslag_mute')==='1';}catch(e){}
 // so we put the page's audio session in "playback" mode and keep a silent media element running.
 const SILENT_WAV='data:audio/wav;base64,UklGRvQHAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YdAHAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==';
 let unlockEl=null;
+let wantMic=false; // while the mic is in use the audio session must allow recording
+function setAudioSessionType(t){try{if(navigator.audioSession&&navigator.audioSession.type!==t)navigator.audioSession.type=t;}catch(e){}}
 function unlockMobileAudio(){
-  try{if(navigator.audioSession&&navigator.audioSession.type!=='playback')navigator.audioSession.type='playback';}catch(e){}
+  setAudioSessionType(wantMic?'play-and-record':'playback');
   try{
     if(!unlockEl){unlockEl=document.createElement('audio');unlockEl.setAttribute('playsinline','');unlockEl.setAttribute('x-webkit-airplay','deny');unlockEl.preload='auto';unlockEl.loop=true;unlockEl.src=SILENT_WAV;}
     if(unlockEl.paused){const p=unlockEl.play();if(p&&p.catch)p.catch(()=>{});}
@@ -1435,8 +1437,16 @@ async function voiceOnSignal(from,data){
 async function toggleMic(){
   if(!VOICE.supported)return;
   if(!VOICE.mic){
+    wantMic=true;setAudioSessionType('play-and-record');
     try{VOICE.mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});}
-    catch(e){showBanner('Geen microfoon');setHint('Je microfoon is geblokkeerd. Sta hem toe in de instellingen van je browser.',true);if(G)G.hintT=4;return;}
+    catch(e){
+      wantMic=false;setAudioSessionType('playback');
+      const n=e&&e.name||'';
+      const msg=n==='NotAllowedError'?'De microfoon is niet toegestaan. Tik nog een keer op 🎤. Werkt het niet: tik op aA → Website-instellingen → Microfoon → Sta toe.'
+        :n==='NotFoundError'?'Geen microfoon gevonden op dit apparaat.'
+        :n==='NotReadableError'?'Je microfoon wordt al door een andere app gebruikt (bijv. een gesprek). Sluit die en probeer opnieuw.'
+        :'Microfoon starten lukte niet ('+(n||'onbekend')+'). Tik nog een keer op 🎤.';
+      showBanner('Geen microfoon');setHint(msg,true);if(G)G.hintT=6;return;}
     VOICE.micOn=true;
   }else VOICE.micOn=!VOICE.micOn;
   const t=VOICE.mic.getAudioTracks()[0];if(t)t.enabled=VOICE.micOn;
@@ -1450,6 +1460,7 @@ function voiceStop(){
   VOICE.sender=null;VOICE.pendingIce=[];VOICE.state='off';VOICE.oppMic=false;
   if(VOICE.remoteEl){VOICE.remoteEl.srcObject=null;}
   if(VOICE.mic){VOICE.mic.getTracks().forEach(t=>t.stop());VOICE.mic=null;}
+  wantMic=false;setAudioSessionType('playback');
   VOICE.micOn=false;updateMicBtn();
 }
 function updateMicBtn(){
