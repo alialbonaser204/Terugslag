@@ -39,13 +39,22 @@
   .iconBtn{width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.15);background:rgba(58,30,12,.6);
     color:#fff;font-size:17px;display:grid;place-items:center;cursor:pointer;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
   #roundInfo{white-space:nowrap;font-size:12px;padding:7px 10px}
-  #lvlInfo small{white-space:nowrap;max-width:118px;overflow:hidden;text-overflow:ellipsis}
+  #lvlInfo small{white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis}
   .hudBtns{gap:6px}
   #hud .iconBtn{width:38px;height:38px;font-size:16px}
-  #micBtn{position:relative}
-  #micBtn.off{opacity:.55}
-  #micBtn.off::after{content:'';position:absolute;left:8px;right:8px;top:50%;height:3px;background:#ff3d5e;transform:rotate(-45deg);border-radius:2px}
-  #micBtn.live{box-shadow:0 0 0 3px rgba(80,220,120,.75)}
+  .ptt{position:fixed;left:16px;bottom:calc(env(safe-area-inset-bottom) + 22px);width:78px;height:78px;border-radius:50%;z-index:6;
+    background:rgba(58,30,12,.78);border:3px solid rgba(255,255,255,.35);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    touch-action:none;-webkit-touch-callout:none;cursor:pointer;padding:0;transition:background .12s,border-color .12s}
+  .ptt .pttIcon{font-size:26px;line-height:1;position:relative;z-index:1}
+  .ptt .pttLabel{font:800 10px Rubik,sans-serif;margin-top:3px;letter-spacing:.02em;position:relative;z-index:1;white-space:nowrap}
+  .ptt .pttRing{position:absolute;inset:-7px;border-radius:50%;border:5px solid #5dff8f;opacity:0;transform:scale(var(--lvl,1));transition:opacity .15s}
+  .ptt.linked{border-color:rgba(93,255,143,.6)}
+  .ptt.talking{background:#2a9d52;border-color:#c8ffd9}
+  .ptt.talking .pttRing{opacity:.9}
+  .ptt.wait{opacity:.6}
+  .ptt .pttHeard{position:absolute;right:-6px;top:-6px;width:28px;height:28px;border-radius:50%;background:#2fb65a;color:#fff;font:900 16px Rubik,sans-serif;
+    display:none;align-items:center;justify-content:center;border:2px solid #fff;z-index:2}
+  .ptt.heard .pttHeard{display:flex}
   #hint{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 64px);transform:translateX(-50%);
     text-align:center;font-weight:700;font-size:16px;padding:10px 18px;border-radius:14px;max-width:86vw;
     background:rgba(58,30,12,.72);border:1px solid rgba(255,255,255,.14);pointer-events:none;opacity:0;transition:opacity .4s}
@@ -110,11 +119,11 @@
   <div id="hearts"><span>♥</span><span>♥</span><span>♥</span></div>
   <div class="pill" id="roundInfo" style="display:none">RONDE 1</div>
   <div class="hudBtns">
-    <button class="iconBtn" id="micBtn" aria-label="Microfoon aan" style="display:none">🎤</button>
     <button class="iconBtn" id="muteBtn" aria-label="Geluid">🔊</button>
     <button class="iconBtn" id="pauseBtn" aria-label="Pauze">❚❚</button>
   </div>
 </div>
+<button id="pttBtn" class="ptt" style="display:none" aria-label="Houd vast om te praten"><span class="pttRing"></span><span class="pttIcon">🎤</span><span class="pttLabel" id="pttLabel">Houd vast</span><span class="pttHeard">✓</span></button>
 <div id="hint"></div>
 <div id="banner"></div>
 
@@ -1177,7 +1186,7 @@ function onDuelPeers(peers){
 function myPeer(peers){const m=peers.find(p=>p.isMe&&p.sameTab);return m?m.peer:null;}
 function netState(){
   const p=player;
-  return {mic:!!VOICE.micOn,face:myFace(),role:NET.host?'host':'guest',oppPeer:NET.oppPeer,match:NET.match,losses:NET.losses,rematch:NET.rematch,
+  return {talk:!!VOICE.talking,hear:!!VOICE.hearing,mic:!!VOICE.micOn,face:myFace(),role:NET.host?'host':'guest',oppPeer:NET.oppPeer,match:NET.match,losses:NET.losses,rematch:NET.rematch,
     hp:p?p.hp:3,dead:p?!!p.dead:false,live:!!(p&&p.started),
     st:p?[r2(p.x),r2(p.y),r2(p.a),r2(p.vx),r2(p.vy),r2(p.w)]:null,shots:NET.shots.slice(-6)};
 }
@@ -1193,7 +1202,7 @@ function handleOpp(ps){
   // rematch
   if(NET.phase==='matchEnd'&&NET.rematch===NET.match+1&&(ps.rematch===NET.match+1||ps.match===NET.match+1)){startRematch();return;}
   if(Number.isInteger(ps.face)&&ps.face>=0&&ps.face<FACES.length&&ps.face!==NET.oppFace){NET.oppFace=ps.face;setPilotFace(OPP.gun,ps.face);}
-  VOICE.oppMic=ps.mic===true;
+  VOICE.oppMic=ps.mic===true;VOICE.oppTalk=ps.talk===true;VOICE.oppHears=ps.hear===true;
   if(ps.match!==NET.match)return;
   if(Array.isArray(ps.st)&&ps.st.length===6&&ps.st.every(v=>typeof v==='number'&&isFinite(v))){
     const [x,y,a,vx,vy,w]=ps.st;
@@ -1377,7 +1386,7 @@ function mockRoom(){
 }
 
 /* ---------- voice chat (Railway build only: WebRTC, signalling via our server) ---------- */
-const VOICE={supported:false,pc:null,mic:null,micOn:false,sender:null,remoteEl:null,pendingIce:[],oppMic:false,state:'off',offTimer:null,unsub:null};
+const VOICE={talking:false,pressing:false,level:0,hearT:0,hearing:false,oppHears:false,oppTalk:false,idleTimer:null,analyser:null,abuf:null,lastEnergy:null,supported:false,pc:null,mic:null,micOn:false,sender:null,remoteEl:null,pendingIce:[],oppMic:false,state:'off',offTimer:null,unsub:null};
 VOICE.supported=!!(window.TERUGSLAG_WS&&window.RTCPeerConnection&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
 const ICE_SERVERS=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']},{urls:'stun:stun.cloudflare.com:3478'}];
 function voiceSignal(data){if(NET.duel&&NET.duel.signal&&NET.oppPeer)NET.duel.signal(NET.oppPeer,data);}
@@ -1434,25 +1443,84 @@ async function voiceOnSignal(from,data){
     }
   }catch(e){}
 }
-async function toggleMic(){
-  if(!VOICE.supported)return;
-  if(!VOICE.mic){
-    wantMic=true;setAudioSessionType('play-and-record');
-    try{VOICE.mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});}
-    catch(e){
-      wantMic=false;setAudioSessionType('playback');
-      const n=e&&e.name||'';
-      const msg=n==='NotAllowedError'?'De microfoon is niet toegestaan. Tik nog een keer op 🎤. Werkt het niet: tik op aA → Website-instellingen → Microfoon → Sta toe.'
-        :n==='NotFoundError'?'Geen microfoon gevonden op dit apparaat.'
-        :n==='NotReadableError'?'Je microfoon wordt al door een andere app gebruikt (bijv. een gesprek). Sluit die en probeer opnieuw.'
-        :'Microfoon starten lukte niet ('+(n||'onbekend')+'). Tik nog een keer op 🎤.';
-      showBanner('Geen microfoon');setHint(msg,true);if(G)G.hintT=6;return;}
-    VOICE.micOn=true;
-  }else VOICE.micOn=!VOICE.micOn;
-  const t=VOICE.mic.getAudioTracks()[0];if(t)t.enabled=VOICE.micOn;
-  if(VOICE.sender&&t&&VOICE.sender.track!==t){try{await VOICE.sender.replaceTrack(t);}catch(e){}}
+async function acquireMic(){
+  wantMic=true;setAudioSessionType('play-and-record');
+  if(unlockEl&&!unlockEl.paused){try{unlockEl.pause();}catch(e){}} // the silent keep-alive track can block capture on iPhone
+  try{VOICE.mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});}
+  catch(e){
+    wantMic=false;setAudioSessionType('playback');
+    const n=e&&e.name||'';
+    const msg=n==='NotAllowedError'?'De microfoon is niet toegestaan. Probeer nog een keer. Werkt het niet: tik op aA → Website-instellingen → Microfoon → Sta toe.'
+      :n==='NotFoundError'?'Geen microfoon gevonden op dit apparaat.'
+      :n==='NotReadableError'?'Je microfoon wordt al door een andere app gebruikt (bijv. een gesprek). Sluit die en probeer opnieuw.'
+      :'Microfoon starten lukte niet ('+(n||'onbekend')+'). Probeer nog een keer.';
+    showBanner('Geen microfoon');setHint(msg,true);if(G)G.hintT=6;return false;}
+  const t=VOICE.mic.getAudioTracks()[0];if(t)t.enabled=false;
+  if(VOICE.sender&&t){try{await VOICE.sender.replaceTrack(t);}catch(e){}}
+  // level meter for the "your mic works" ring
+  try{if(AC){const src=AC.createMediaStreamSource(VOICE.mic),an=AC.createAnalyser(),z=AC.createGain();an.fftSize=512;z.gain.value=0;src.connect(an);an.connect(z);z.connect(AC.destination);VOICE.analyser=an;VOICE.abuf=new Float32Array(an.fftSize);}}catch(e){}
   if(AC&&AC.state!=='running'){try{AC.resume();}catch(e){}}
-  voiceKick();updateMicBtn();sendNet(true);
+  return true;
+}
+function releaseMic(){
+  if(VOICE.pressing||VOICE.talking||!VOICE.mic)return;
+  if(VOICE.sender){try{VOICE.sender.replaceTrack(null);}catch(e){}}
+  VOICE.mic.getTracks().forEach(t=>t.stop());VOICE.mic=null;VOICE.analyser=null;
+  wantMic=false;setAudioSessionType('playback');
+}
+function setTalking(on){
+  VOICE.talking=on;VOICE.micOn=on;
+  const t=VOICE.mic&&VOICE.mic.getAudioTracks()[0];if(t)t.enabled=on;
+  clearTimeout(VOICE.idleTimer);
+  if(!on&&VOICE.mic)VOICE.idleTimer=setTimeout(releaseMic,20000); // stop recording completely after 20s unused
+  updateMicBtn();sendNet(true);
+}
+async function pttDown(e){
+  e.preventDefault();e.stopPropagation();
+  try{e.currentTarget.setPointerCapture(e.pointerId);}catch(_){}
+  initAudio();voiceKick();
+  if(VOICE.pressing)return;
+  VOICE.pressing=true;
+  if(!VOICE.mic){$('#pttBtn').classList.add('wait');const ok=await acquireMic();$('#pttBtn').classList.remove('wait');if(!ok){VOICE.pressing=false;updateMicBtn();return;}}
+  if(VOICE.pressing)setTalking(true);
+}
+function pttUp(e){if(e){e.preventDefault();e.stopPropagation();}if(!VOICE.pressing&&!VOICE.talking)return;VOICE.pressing=false;setTalking(false);}
+let voiceStatsT=0;
+function updateVoiceMeters(rdt){
+  if(!VOICE.supported||!G||!G.online)return;
+  // own mic level -> ring size
+  let lvl=0;
+  if(VOICE.talking&&VOICE.analyser){VOICE.analyser.getFloatTimeDomainData(VOICE.abuf);let s2=0;for(const v of VOICE.abuf)s2+=v*v;lvl=Math.sqrt(s2/VOICE.abuf.length);}
+  VOICE.level+=(lvl-VOICE.level)*0.35;
+  $('#pttBtn').style.setProperty('--lvl',(1+Math.min(0.45,VOICE.level*9)).toFixed(3));
+  // incoming audio level (is the other player actually reaching us?)
+  voiceStatsT-=rdt;
+  if(voiceStatsT<=0&&VOICE.pc){
+    voiceStatsT=0.25;
+    VOICE.pc.getStats().then(st=>{let level=null,energy=null;
+      st.forEach(r=>{if(r.type==='inbound-rtp'&&(r.kind==='audio'||r.mediaType==='audio')){if(typeof r.audioLevel==='number')level=r.audioLevel;if(typeof r.totalAudioEnergy==='number')energy=r.totalAudioEnergy;}
+        else if(r.type==='track'&&r.remoteSource&&typeof r.audioLevel==='number')level=r.audioLevel;});
+      const now=performance.now();let heard=false;
+      if(energy!==null){ // energy over the last poll window = steady loudness measure
+        if(VOICE.lastEnergy!=null&&VOICE.lastEnergyT){const dt=Math.max(0.05,(now-VOICE.lastEnergyT)/1000);heard=Math.sqrt(Math.max(0,energy-VOICE.lastEnergy)/dt)>0.006;}
+        VOICE.lastEnergy=energy;VOICE.lastEnergyT=now;
+      }
+      if(!heard&&level!==null&&level>0.01)heard=true;
+      if(heard)VOICE.hearT=now;
+    }).catch(()=>{});
+  }
+  const hearing=performance.now()-VOICE.hearT<900;
+  if(hearing!==VOICE.hearing){VOICE.hearing=hearing;sendNet(true);updateHUD();}
+  updateMicBtn();
+}
+function updateMicBtn(){
+  const b=$('#pttBtn');if(!b)return;
+  const show=VOICE.supported&&G&&G.online&&mode!=='result';
+  b.style.display=show?'':'none';
+  b.classList.toggle('talking',!!VOICE.talking);
+  b.classList.toggle('heard',!!(VOICE.talking&&VOICE.oppHears));
+  b.classList.toggle('linked',VOICE.state==='connected');
+  $('#pttLabel').textContent=VOICE.talking?(VOICE.oppHears?'Hij hoort je':'Praat…'):'Houd vast';
 }
 function voiceStop(){
   if(VOICE.unsub){try{VOICE.unsub();}catch(e){}VOICE.unsub=null;}
@@ -1461,15 +1529,8 @@ function voiceStop(){
   if(VOICE.remoteEl){VOICE.remoteEl.srcObject=null;}
   if(VOICE.mic){VOICE.mic.getTracks().forEach(t=>t.stop());VOICE.mic=null;}
   wantMic=false;setAudioSessionType('playback');
-  VOICE.micOn=false;updateMicBtn();
-}
-function updateMicBtn(){
-  const b=$('#micBtn');if(!b)return;
-  const show=VOICE.supported&&G&&G.online;
-  b.style.display=show?'':'none';
-  b.classList.toggle('off',!VOICE.micOn);
-  b.classList.toggle('live',VOICE.micOn&&VOICE.state==='connected');
-  b.setAttribute('aria-label',VOICE.micOn?'Microfoon uit':'Microfoon aan');
+  VOICE.micOn=false;VOICE.talking=false;VOICE.pressing=false;VOICE.analyser=null;VOICE.hearing=false;VOICE.oppHears=false;VOICE.oppTalk=false;clearTimeout(VOICE.idleTimer);
+  wantMic=false;setAudioSessionType('playback');updateMicBtn();
 }
 
 /* ---------- bullet time ---------- */
@@ -1521,7 +1582,7 @@ function updateHUD(){
   if(!G)return;
   if(G.online){
     $('#lvlInfo').firstChild.nodeValue='JIJ '+NET.oppLosses+' – '+NET.losses;
-    $('#enemyCount').textContent='vs '+NET.oppName.slice(0,14)+(VOICE.oppMic?' 🎤':'');
+    $('#enemyCount').textContent=(VOICE.oppTalk?'🗣️':'')+(VOICE.hearing?'🔊':'')+((VOICE.oppTalk||VOICE.hearing)?' ':'')+'vs '+NET.oppName.slice(0,12);
     $('#hearts').style.display='none';$('#roundInfo').style.display='';
     const rn=Math.min(NET.losses+NET.oppLosses+(NET.phase==='roundEnd'||NET.phase==='matchEnd'?0:1),99);
     $('#roundInfo').textContent=rn<=3?'RONDE '+Math.max(1,rn)+'/3':'BESLISSENDE RONDE';
@@ -1589,7 +1650,7 @@ function btn(id,fn){$(id).addEventListener('click',e=>{e.stopPropagation();initA
 btn('#playBtn',()=>{hideScreens();startLevel(Math.min(save.unlocked,LEVELS.length)-1);});
 btn('#nextBtn',()=>{if(G&&G.online){requestRematch();return;}hideScreens();startLevel(G.level+1);});
 btn('#onlineBtn',openOnline);
-$('#micBtn').addEventListener('click',e=>{e.stopPropagation();initAudio();toggleMic();});
+{const pb=$('#pttBtn');pb.addEventListener('pointerdown',pttDown);['pointerup','pointercancel','lostpointercapture'].forEach(ev=>pb.addEventListener(ev,pttUp));pb.addEventListener('contextmenu',e=>e.preventDefault());}
 btn('#hostBtn',hostDuel);
 btn('#joinBtn',()=>joinDuel($('#codeIn').value));
 btn('#onBackBtn',()=>{const waiting=$('#onWait').style.display!=='none';leaveDuel().then(()=>{NET.phase='idle';if(waiting)openOnline();else showMenu();});});
@@ -1631,6 +1692,7 @@ function frame(now){
     syncMeshes(rdt);
   }
   updateBulletTime(rdt);
+  if(G&&G.online)updateVoiceMeters(rdt);
   if(mode!=='pause'){
     const dt=rdt*ts;
     updateParts(dt);updateFlashes(dt);
@@ -1651,7 +1713,7 @@ showMenu();
 requestAnimationFrame(frame);
 
 // test hook
-window.__T={VOICE,toggleMic,watchDuel,sfx,headPos,__spawn:(x,y,vx,vy)=>spawnBullet(x,y,vx,vy,"e",0),BT,NET,OPP,damagePlayer,get audio(){return {ac:AC&&AC.state,buf:BUF?Object.keys(BUF).length:0}},step,get G(){return G},get player(){return player},get enemies(){return enemies},startLevel,playerShoot,get mode(){return mode}};
+window.__T={VOICE,setTalking,acquireMic,watchDuel,sfx,headPos,__spawn:(x,y,vx,vy)=>spawnBullet(x,y,vx,vy,"e",0),BT,NET,OPP,damagePlayer,get audio(){return {ac:AC&&AC.state,buf:BUF?Object.keys(BUF).length:0}},step,get G(){return G},get player(){return player},get enemies(){return enemies},startLevel,playerShoot,get mode(){return mode}};
 })();
 </script>
 </body>
