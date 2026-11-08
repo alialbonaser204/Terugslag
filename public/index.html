@@ -81,6 +81,8 @@
   .openItem{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px 10px 16px;border-radius:14px;
     background:rgba(94,53,25,.88);border:1px solid rgba(255,255,255,.14);font-weight:700}
   .openItem button{border:0;border-radius:10px;padding:9px 14px;font:900 14px Rubik,sans-serif;background:#ffbe6b;color:#3a1a06;cursor:pointer}
+  .spinner{width:46px;height:46px;border-radius:50%;border:5px solid rgba(255,226,168,.25);border-top-color:#ffbe6b;animation:spin 0.9s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
   .codeBig{font:900 64px Rubik,sans-serif;letter-spacing:.2em;color:#ffe2a8;text-shadow:0 5px 0 #4a2410;padding-left:.2em}
   .howto{font-size:14px;line-height:1.5;opacity:.85;text-align:center;max-width:320px;margin:4px 0 0}
   #stars{font-size:46px;letter-spacing:6px;color:rgba(255,255,255,.18);min-height:56px}
@@ -139,7 +141,8 @@
   </div>
   <div id="onWait" class="col" style="display:none">
     <div class="codeBig" id="codeBig">----</div>
-    <p class="howto">Geef deze code aan je vriend.<br>Wachten op tegenstander…</p>
+    <div class="spinner"></div>
+    <p class="howto" id="waitMsg">Geef deze code aan je vriend.<br>Wachten op tegenstander…</p>
   </div>
   <button class="btn alt" id="onBackBtn">Terug</button>
 </div>
@@ -1081,7 +1084,7 @@ function onStatus(t){$('#onStatus').textContent=t;}
 
 async function openOnline(){
   hideScreens();renderFacePick();$('#online').classList.remove('hidden');
-  $('#onMain').style.display='';$('#onWait').style.display='none';
+  $('#onMain').style.display='';$('#onWait').style.display='none';$('#onBackBtn').textContent='Terug';
   onStatus('Verbinden…');
   const room=await getRoom();
   if(!room){onStatus(window.TERUGSLAG_WS?'Kan geen verbinding maken met de server.':'Online spelen is nu niet beschikbaar.');return;}
@@ -1117,6 +1120,7 @@ async function hostDuel(){
   }catch(e){onStatus('Kon geen duel maken. Probeer het opnieuw.');return;}
   NET.code=code;NET.host=true;
   $('#codeBig').textContent=code;$('#onMain').style.display='none';$('#onWait').style.display='';
+  $('#waitMsg').innerHTML='Geef deze code aan je vriend.<br>Wachten op tegenstander…';$('#onBackBtn').textContent='Stoppen';
   onStatus('Je duel staat klaar.');
   try{await NET.room.presence({open:code});}catch(e){}
   watchDuel();
@@ -1126,12 +1130,13 @@ async function joinDuel(code){
   if(code.length!==4){onStatus('Vul een code van 4 letters in.');return;}
   if(!NET.room)return;
   await leaveDuel();
-  onStatus('Verbinden met duel '+code+'…');
   try{NET.duel=await NET.room.join('duel-'+code.toLowerCase());}
   catch(e){onStatus('Kon niet verbinden met dat duel.');return;}
   NET.code=code;NET.host=false;
+  $('#codeBig').textContent=code;$('#onMain').style.display='none';$('#onWait').style.display='';
+  $('#waitMsg').innerHTML='Zoeken naar je vriend…<br>We blijven zoeken tot het duel met deze code start.';$('#onBackBtn').textContent='Stoppen';
+  onStatus('Duel '+code+' zoeken');
   watchDuel();
-  setTimeout(()=>{if(NET.duel&&!NET.oppPeer){onStatus('Niemand gevonden met code '+code+'. Klopt de code?');leaveDuel();}},6000);
 }
 function watchDuel(){
   const d=NET.duel;
@@ -1471,7 +1476,7 @@ btn('#nextBtn',()=>{if(G&&G.online){requestRematch();return;}hideScreens();start
 btn('#onlineBtn',openOnline);
 btn('#hostBtn',hostDuel);
 btn('#joinBtn',()=>joinDuel($('#codeIn').value));
-btn('#onBackBtn',()=>{leaveDuel().then(()=>{NET.phase='idle';showMenu();});});
+btn('#onBackBtn',()=>{const waiting=$('#onWait').style.display!=='none';leaveDuel().then(()=>{NET.phase='idle';if(waiting)openOnline();else showMenu();});});
 $('#codeIn').addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Enter'){initAudio();joinDuel($('#codeIn').value);}});
 btn('#retryBtn',()=>{hideScreens();startLevel(G.level);});
 btn('#menuBtn',showMenu);
@@ -1530,7 +1535,7 @@ showMenu();
 requestAnimationFrame(frame);
 
 // test hook
-window.__T={sfx,headPos,__spawn:(x,y,vx,vy)=>spawnBullet(x,y,vx,vy,"e",0),BT,NET,OPP,damagePlayer,get audio(){return {ac:AC&&AC.state,buf:BUF?Object.keys(BUF).length:0}},step,get G(){return G},get player(){return player},get enemies(){return enemies},startLevel,playerShoot,get mode(){return mode}};
+window.__T={watchDuel,sfx,headPos,__spawn:(x,y,vx,vy)=>spawnBullet(x,y,vx,vy,"e",0),BT,NET,OPP,damagePlayer,get audio(){return {ac:AC&&AC.state,buf:BUF?Object.keys(BUF).length:0}},step,get G(){return G},get player(){return player},get enemies(){return enemies},startLevel,playerShoot,get mode(){return mode}};
 })();
 </script>
 </body>
