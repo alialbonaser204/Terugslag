@@ -38,6 +38,14 @@
   .hudBtns{display:flex;gap:8px;pointer-events:auto}
   .iconBtn{width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.15);background:rgba(58,30,12,.6);
     color:#fff;font-size:17px;display:grid;place-items:center;cursor:pointer;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  #roundInfo{white-space:nowrap;font-size:12px;padding:7px 10px}
+  #lvlInfo small{white-space:nowrap;max-width:118px;overflow:hidden;text-overflow:ellipsis}
+  .hudBtns{gap:6px}
+  #hud .iconBtn{width:38px;height:38px;font-size:16px}
+  #micBtn{position:relative}
+  #micBtn.off{opacity:.55}
+  #micBtn.off::after{content:'';position:absolute;left:8px;right:8px;top:50%;height:3px;background:#ff3d5e;transform:rotate(-45deg);border-radius:2px}
+  #micBtn.live{box-shadow:0 0 0 3px rgba(80,220,120,.75)}
   #hint{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 64px);transform:translateX(-50%);
     text-align:center;font-weight:700;font-size:16px;padding:10px 18px;border-radius:14px;max-width:86vw;
     background:rgba(58,30,12,.72);border:1px solid rgba(255,255,255,.14);pointer-events:none;opacity:0;transition:opacity .4s}
@@ -102,6 +110,7 @@
   <div id="hearts"><span>♥</span><span>♥</span><span>♥</span></div>
   <div class="pill" id="roundInfo" style="display:none">RONDE 1</div>
   <div class="hudBtns">
+    <button class="iconBtn" id="micBtn" aria-label="Microfoon aan" style="display:none">🎤</button>
     <button class="iconBtn" id="muteBtn" aria-label="Geluid">🔊</button>
     <button class="iconBtn" id="pauseBtn" aria-label="Pauze">❚❚</button>
   </div>
@@ -315,6 +324,7 @@ function unlockMobileAudio(){
 }
 function initAudio(){
   unlockMobileAudio();
+  if(typeof voiceKick==='function')voiceKick();
   if(AC){if(AC.state!=='running'&&AC.state!=='closed'){try{AC.resume();}catch(e){}}return;}
   try{
     AC=new (window.AudioContext||window.webkitAudioContext)();
@@ -1141,6 +1151,7 @@ async function joinDuel(code){
 function watchDuel(){
   const d=NET.duel;
   d.presence(netState()).catch(()=>{});
+  if(VOICE.supported&&d.onSignal&&!VOICE.unsub)VOICE.unsub=d.onSignal(voiceOnSignal);
   const un=d.onPeers(ch=>onDuelPeers(ch.peers),()=>{if(G&&G.online)endOnline('De verbinding met het duel is verbroken.');});
   NET.unsubs.push(un);
 }
@@ -1164,7 +1175,7 @@ function onDuelPeers(peers){
 function myPeer(peers){const m=peers.find(p=>p.isMe&&p.sameTab);return m?m.peer:null;}
 function netState(){
   const p=player;
-  return {face:myFace(),role:NET.host?'host':'guest',oppPeer:NET.oppPeer,match:NET.match,losses:NET.losses,rematch:NET.rematch,
+  return {mic:!!VOICE.micOn,face:myFace(),role:NET.host?'host':'guest',oppPeer:NET.oppPeer,match:NET.match,losses:NET.losses,rematch:NET.rematch,
     hp:p?p.hp:3,dead:p?!!p.dead:false,live:!!(p&&p.started),
     st:p?[r2(p.x),r2(p.y),r2(p.a),r2(p.vx),r2(p.vy),r2(p.w)]:null,shots:NET.shots.slice(-6)};
 }
@@ -1180,6 +1191,7 @@ function handleOpp(ps){
   // rematch
   if(NET.phase==='matchEnd'&&NET.rematch===NET.match+1&&(ps.rematch===NET.match+1||ps.match===NET.match+1)){startRematch();return;}
   if(Number.isInteger(ps.face)&&ps.face>=0&&ps.face<FACES.length&&ps.face!==NET.oppFace){NET.oppFace=ps.face;setPilotFace(OPP.gun,ps.face);}
+  VOICE.oppMic=ps.mic===true;
   if(ps.match!==NET.match)return;
   if(Array.isArray(ps.st)&&ps.st.length===6&&ps.st.every(v=>typeof v==='number'&&isFinite(v))){
     const [x,y,a,vx,vy,w]=ps.st;
@@ -1234,6 +1246,7 @@ function startDuel(){
   setHint('Best of 3 — één kogel en je ligt eruit!',true);G.hintT=4;
   mode='play';
   startRound();
+  voiceStart();updateMicBtn();
 }
 function startRound(){
   const side=NET.host?-1:1,p=player;
@@ -1293,6 +1306,7 @@ function onlineDied(){
   roundOver(false);
 }
 async function leaveDuel(){
+  voiceStop();
   NET.unsubs.forEach(u=>{try{u();}catch(e){}});NET.unsubs=[];
   if(NET.duel){const d=NET.duel;NET.duel=null;try{await d.leave();}catch(e){}}
   if(NET.room&&NET.host)NET.room.presence({open:null}).catch(()=>{});
@@ -1321,11 +1335,12 @@ function wsRoom(){
       if(m.t==='peers'){r.others.clear();(m.list||[]).forEach(x=>r.others.set(x.peer,peerObj(x.peer,x.p)));}
       else if(m.t==='p')r.others.set(m.peer,peerObj(m.peer,m.p));
       else if(m.t==='bye')r.others.delete(m.peer);
+      else if(m.t==='sig'){r.sigSubs.slice().forEach(f=>{try{f(m.from,m.data);}catch(_){}});return;}
       r.notify();};
     ws.onclose=()=>{open=false;for(const r of rooms.values()){r.others.clear();r.notify();}setTimeout(connect,1500);};
   }
   function mk(name){
-    const r={pres:{},others:new Map(),subs:[]};
+    const r={pres:{},others:new Map(),subs:[],sigSubs:[]};
     const snap=()=>[{peer:me,isMe:true,sameTab:true,by:null,kind:'viewer',guest:false,presence:r.pres,updatedAt:Date.now()},...r.others.values()];
     r.notify=()=>{const ps=snap();r.subs.slice().forEach(f=>f({peers:ps,joined:[],left:[],updated:ps}));};
     rooms.set(name,r);send({t:'join',room:name,p:r.pres});
@@ -1334,7 +1349,9 @@ function wsRoom(){
       peers:snap,
       onPeers(f){r.subs.push(f);setTimeout(()=>f({peers:snap(),joined:snap(),left:[],updated:[]}),0);return()=>{const i=r.subs.indexOf(f);if(i>=0)r.subs.splice(i,1);};},
       connected:()=>open,
-      leave(){if(rooms.get(name)===r){rooms.delete(name);send({t:'leave',room:name});}r.subs.length=0;return Promise.resolve();}};
+      signal(to,data){send({t:'sig',room:name,to,data});},
+      onSignal(f){r.sigSubs.push(f);return()=>{const i=r.sigSubs.indexOf(f);if(i>=0)r.sigSubs.splice(i,1);};},
+      leave(){r.sigSubs.length=0;if(rooms.get(name)===r){rooms.delete(name);send({t:'leave',room:name});}r.subs.length=0;return Promise.resolve();}};
   }
   connect();
   const lobby=mk('lobby');lobby.join=n=>Promise.resolve(mk(n));return lobby;
@@ -1355,6 +1372,93 @@ function mockRoom(){
       connected:()=>true,leave(){if(closed)return Promise.resolve();closed=true;clearInterval(hb);ch.postMessage({t:'bye',peer:me});ch.close();return Promise.resolve();}};
   }
   const lobby=mk('lobby');lobby.join=n=>Promise.resolve(mk(n));return lobby;
+}
+
+/* ---------- voice chat (Railway build only: WebRTC, signalling via our server) ---------- */
+const VOICE={supported:false,pc:null,mic:null,micOn:false,sender:null,remoteEl:null,pendingIce:[],oppMic:false,state:'off',offTimer:null,unsub:null};
+VOICE.supported=!!(window.TERUGSLAG_WS&&window.RTCPeerConnection&&navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
+const ICE_SERVERS=[{urls:['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302']},{urls:'stun:stun.cloudflare.com:3478'}];
+function voiceSignal(data){if(NET.duel&&NET.duel.signal&&NET.oppPeer)NET.duel.signal(NET.oppPeer,data);}
+function voiceRemoteAudio(){
+  if(!VOICE.remoteEl){const a=document.createElement('audio');a.autoplay=true;a.setAttribute('playsinline','');a.style.display='none';document.body.appendChild(a);VOICE.remoteEl=a;}
+  return VOICE.remoteEl;
+}
+function voiceKick(){ // browsers may block audio until a tap: retry on every tap
+  if(VOICE.remoteEl&&VOICE.remoteEl.srcObject&&VOICE.remoteEl.paused){const p=VOICE.remoteEl.play();if(p&&p.catch)p.catch(()=>{});}
+}
+function voiceMakePC(){
+  const pc=new RTCPeerConnection({iceServers:ICE_SERVERS});
+  pc.onicecandidate=e=>{if(e.candidate)voiceSignal({ice:e.candidate.toJSON?e.candidate.toJSON():e.candidate});};
+  pc.ontrack=e=>{const a=voiceRemoteAudio();a.srcObject=e.streams&&e.streams[0]?e.streams[0]:new MediaStream([e.track]);voiceKick();};
+  pc.onconnectionstatechange=()=>{
+    VOICE.state=pc.connectionState;updateMicBtn();
+    if(pc.connectionState==='failed'&&NET.host){try{pc.restartIce();voiceOffer(true);}catch(e){}}
+  };
+  VOICE.pc=pc;return pc;
+}
+async function voiceOffer(restart){
+  const pc=VOICE.pc;if(!pc)return;
+  try{const o=await pc.createOffer(restart?{iceRestart:true}:undefined);await pc.setLocalDescription(o);voiceSignal({sdp:pc.localDescription.toJSON?pc.localDescription.toJSON():{type:pc.localDescription.type,sdp:pc.localDescription.sdp}});}catch(e){}
+}
+async function voiceStart(){ // called when a duel starts
+  if(!VOICE.supported||!NET.duel||VOICE.pc)return;
+  if(NET.duel.onSignal&&!VOICE.unsub)VOICE.unsub=NET.duel.onSignal(voiceOnSignal);
+  if(NET.host){
+    const pc=voiceMakePC();
+    const tr=pc.addTransceiver('audio',{direction:'sendrecv'});VOICE.sender=tr.sender;
+    if(VOICE.mic)await VOICE.sender.replaceTrack(VOICE.mic.getAudioTracks()[0]);
+    setTimeout(()=>voiceOffer(false),600);
+  }
+  updateMicBtn();
+}
+async function voiceOnSignal(from,data){
+  if(!data||from!==NET.oppPeer)return;
+  try{
+    if(data.sdp&&data.sdp.type==='offer'){
+      if(!VOICE.pc)voiceMakePC();
+      const pc=VOICE.pc;
+      await pc.setRemoteDescription(data.sdp);
+      const tr=pc.getTransceivers().find(t=>t.receiver&&t.receiver.track&&t.receiver.track.kind==='audio')||pc.getTransceivers()[0];
+      if(tr){tr.direction='sendrecv';VOICE.sender=tr.sender;if(VOICE.mic)await tr.sender.replaceTrack(VOICE.mic.getAudioTracks()[0]);}
+      const ans=await pc.createAnswer();await pc.setLocalDescription(ans);
+      voiceSignal({sdp:{type:pc.localDescription.type,sdp:pc.localDescription.sdp}});
+      for(const c of VOICE.pendingIce.splice(0))await pc.addIceCandidate(c).catch(()=>{});
+    }else if(data.sdp&&data.sdp.type==='answer'&&VOICE.pc){
+      await VOICE.pc.setRemoteDescription(data.sdp);
+      for(const c of VOICE.pendingIce.splice(0))await VOICE.pc.addIceCandidate(c).catch(()=>{});
+    }else if(data.ice){
+      if(VOICE.pc&&VOICE.pc.remoteDescription)await VOICE.pc.addIceCandidate(data.ice).catch(()=>{});
+      else VOICE.pendingIce.push(data.ice);
+    }
+  }catch(e){}
+}
+async function toggleMic(){
+  if(!VOICE.supported)return;
+  if(!VOICE.mic){
+    try{VOICE.mic=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});}
+    catch(e){showBanner('Geen microfoon');setHint('Je microfoon is geblokkeerd. Sta hem toe in de instellingen van je browser.',true);if(G)G.hintT=4;return;}
+    VOICE.micOn=true;
+  }else VOICE.micOn=!VOICE.micOn;
+  const t=VOICE.mic.getAudioTracks()[0];if(t)t.enabled=VOICE.micOn;
+  if(VOICE.sender&&t&&VOICE.sender.track!==t){try{await VOICE.sender.replaceTrack(t);}catch(e){}}
+  if(AC&&AC.state!=='running'){try{AC.resume();}catch(e){}}
+  voiceKick();updateMicBtn();sendNet(true);
+}
+function voiceStop(){
+  if(VOICE.unsub){try{VOICE.unsub();}catch(e){}VOICE.unsub=null;}
+  if(VOICE.pc){try{VOICE.pc.close();}catch(e){}VOICE.pc=null;}
+  VOICE.sender=null;VOICE.pendingIce=[];VOICE.state='off';VOICE.oppMic=false;
+  if(VOICE.remoteEl){VOICE.remoteEl.srcObject=null;}
+  if(VOICE.mic){VOICE.mic.getTracks().forEach(t=>t.stop());VOICE.mic=null;}
+  VOICE.micOn=false;updateMicBtn();
+}
+function updateMicBtn(){
+  const b=$('#micBtn');if(!b)return;
+  const show=VOICE.supported&&G&&G.online;
+  b.style.display=show?'':'none';
+  b.classList.toggle('off',!VOICE.micOn);
+  b.classList.toggle('live',VOICE.micOn&&VOICE.state==='connected');
+  b.setAttribute('aria-label',VOICE.micOn?'Microfoon uit':'Microfoon aan');
 }
 
 /* ---------- bullet time ---------- */
@@ -1406,7 +1510,7 @@ function updateHUD(){
   if(!G)return;
   if(G.online){
     $('#lvlInfo').firstChild.nodeValue='JIJ '+NET.oppLosses+' – '+NET.losses;
-    $('#enemyCount').textContent='vs '+NET.oppName.slice(0,14);
+    $('#enemyCount').textContent='vs '+NET.oppName.slice(0,14)+(VOICE.oppMic?' 🎤':'');
     $('#hearts').style.display='none';$('#roundInfo').style.display='';
     const rn=Math.min(NET.losses+NET.oppLosses+(NET.phase==='roundEnd'||NET.phase==='matchEnd'?0:1),99);
     $('#roundInfo').textContent=rn<=3?'RONDE '+Math.max(1,rn)+'/3':'BESLISSENDE RONDE';
@@ -1438,7 +1542,7 @@ function showMenu(){
   if(NET.duel||NET.phase!=='idle'){leaveDuel();NET.phase='idle';}
   $('#retryBtn').style.display='';$('#nextBtn').textContent='Volgende';$('#pRetryBtn').style.display='';
   clearLevel();G=null;player=null;mode='menu';hideScreens();$('#menu').classList.remove('hidden');
-  $('#hud').classList.remove('on');setHint(null,false);buildLevelGrid();renderFacePick();
+  $('#hud').classList.remove('on');setHint(null,false);buildLevelGrid();updateMicBtn();renderFacePick();
 }
 function showResult(win){
   mode='result';setHint(null,false);
@@ -1474,6 +1578,7 @@ function btn(id,fn){$(id).addEventListener('click',e=>{e.stopPropagation();initA
 btn('#playBtn',()=>{hideScreens();startLevel(Math.min(save.unlocked,LEVELS.length)-1);});
 btn('#nextBtn',()=>{if(G&&G.online){requestRematch();return;}hideScreens();startLevel(G.level+1);});
 btn('#onlineBtn',openOnline);
+$('#micBtn').addEventListener('click',e=>{e.stopPropagation();initAudio();toggleMic();});
 btn('#hostBtn',hostDuel);
 btn('#joinBtn',()=>joinDuel($('#codeIn').value));
 btn('#onBackBtn',()=>{const waiting=$('#onWait').style.display!=='none';leaveDuel().then(()=>{NET.phase='idle';if(waiting)openOnline();else showMenu();});});
@@ -1535,7 +1640,7 @@ showMenu();
 requestAnimationFrame(frame);
 
 // test hook
-window.__T={watchDuel,sfx,headPos,__spawn:(x,y,vx,vy)=>spawnBullet(x,y,vx,vy,"e",0),BT,NET,OPP,damagePlayer,get audio(){return {ac:AC&&AC.state,buf:BUF?Object.keys(BUF).length:0}},step,get G(){return G},get player(){return player},get enemies(){return enemies},startLevel,playerShoot,get mode(){return mode}};
+window.__T={VOICE,toggleMic,watchDuel,sfx,headPos,__spawn:(x,y,vx,vy)=>spawnBullet(x,y,vx,vy,"e",0),BT,NET,OPP,damagePlayer,get audio(){return {ac:AC&&AC.state,buf:BUF?Object.keys(BUF).length:0}},step,get G(){return G},get player(){return player},get enemies(){return enemies},startLevel,playerShoot,get mode(){return mode}};
 })();
 </script>
 </body>

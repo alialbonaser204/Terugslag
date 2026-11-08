@@ -35,7 +35,7 @@ const server = http.createServer((req, res) => {
 // rooms: name -> Map(peerId -> { ws, p })
 const rooms = new Map();
 const ROOM_RE = /^[a-z0-9][a-z0-9_.-]{0,47}$/;
-const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
+const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 32 * 1024 });
 
 function broadcast(name, from, msg) {
   const r = rooms.get(name);
@@ -69,6 +69,7 @@ wss.on('connection', (ws) => {
     let m;
     try { m = JSON.parse(raw); } catch (e) { return; }
     if (!m || typeof m.room !== 'string' || !ROOM_RE.test(m.room)) return;
+    if (m.t === 'sig' && JSON.stringify(m.data || null).length > 24000) return;
     const p = m.p && typeof m.p === 'object' ? m.p : {};
     if (m.t === 'join') {
       if (!mine.has(m.room) && mine.size >= 8) return;
@@ -86,6 +87,12 @@ wss.on('connection', (ws) => {
       broadcast(m.room, peer, { t: 'p', room: m.room, peer, p });
     } else if (m.t === 'leave') {
       leave(m.room);
+    } else if (m.t === 'sig') {
+      // voice chat signalling: forward an offer/answer/ICE candidate to one peer in the same room
+      const r = rooms.get(m.room);
+      if (!r || !r.has(peer) || typeof m.to !== 'string' || !r.has(m.to)) return;
+      const target = r.get(m.to).ws;
+      if (target.readyState === 1) target.send(JSON.stringify({ t: 'sig', room: m.room, from: peer, data: m.data }));
     }
   });
   ws.on('close', () => { for (const n of [...mine]) leave(n); });
