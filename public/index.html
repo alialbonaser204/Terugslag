@@ -167,13 +167,13 @@
   <div class="sub">Kies een spel</div>
   <div class="games">
     <button class="gameCard" id="gTerug"><img id="gTerugImg" alt=""><b>TERUGSLAG</b><small>Pistoolduel</small></button>
-    <button class="gameCard" id="gThrow"><img id="gThrowImg" alt=""><b>GOOIEN</b><small>Waterballon-gevecht</small></button>
+    <button class="gameCard" id="gThrow"><img id="gThrowImg" alt=""><b>GOOIEN</b><small>Ballengevecht</small></button>
   </div>
 </div>
 
 <div id="thMenu" class="screen hidden">
   <h1>GOOIEN</h1>
-  <div class="sub">Waterballon-gevecht</div>
+  <div class="sub">Ballengevecht</div>
   <div class="facePick"></div>
   <button class="btn" id="thBotBtn">🤖 Tegen de bot</button>
   <button class="btn gold" id="thFriendBtn">👥 Tegen een vriend</button>
@@ -1733,10 +1733,10 @@ function showHub(){
   g.fillStyle='#f2c27d';g.beginPath();g.moveTo(0,240);g.lineTo(0,185);g.quadraticCurveTo(120,140,240,190);g.lineTo(240,240);g.fill();
   g.strokeStyle='#fff1d6';g.lineWidth=6;g.beginPath();g.moveTo(0,185);g.quadraticCurveTo(120,140,240,190);g.stroke();
   g.setLineDash([2,14]);g.lineCap='round';g.strokeStyle='rgba(255,255,255,.9)';g.lineWidth=7;g.beginPath();g.moveTo(40,160);g.quadraticCurveTo(110,20,175,95);g.stroke();g.setLineDash([]);
-  g.fillStyle='#3fb1ff';g.beginPath();g.ellipse(180,100,30,26,0.4,0,Math.PI*2);g.fill();
-  g.fillStyle='rgba(255,255,255,.75)';g.beginPath();g.ellipse(170,90,9,6,-0.5,0,Math.PI*2);g.fill();
-  g.fillStyle='#1d7fd1';g.beginPath();g.moveTo(203,114);g.lineTo(214,122);g.lineTo(206,128);g.fill();
-  for(let i=0;i<7;i++){const a=i/7*Math.PI*2;g.fillStyle='#8fd6ff';g.beginPath();g.arc(180+Math.cos(a)*44,100+Math.sin(a)*40,4,0,Math.PI*2);g.fill();}
+  const tg=g.createLinearGradient(70,135,170,100);tg.addColorStop(0,'rgba(255,255,255,0)');tg.addColorStop(1,'rgba(255,255,255,.95)');
+  g.fillStyle=tg;g.beginPath();g.moveTo(70,140);g.lineTo(172,90);g.lineTo(176,112);g.closePath();g.fill();
+  g.fillStyle='#fff';g.strokeStyle='#1d1d1d';g.lineWidth=5;g.beginPath();g.arc(180,100,22,0,Math.PI*2);g.fill();g.stroke();
+  g.fillStyle='rgba(180,200,220,.6)';g.beginPath();g.arc(186,106,9,0,Math.PI*2);g.fill();
   $('#gThrowImg').src=c.toDataURL();
 })();
 function showMenu(){
@@ -2103,7 +2103,7 @@ function thGameOver(winner){
     else if(TH.mode==='bot')title=winner===0?'Jij wint!':'Verloren…';
     else title=winner===TH.myIdx?'Jij wint!':'Verloren…';
     $('#thResTitle').textContent=title;
-    $('#thResMsg').textContent=TH.mode==='online'?(winner===TH.myIdx?'Je hebt '+loser.name+' kletsnat gegooid!':w.name+' heeft je kletsnat gegooid.'):w.name.replace(' (bot)','')+' heeft '+loser.name.replace(' (bot)','')+' kletsnat gegooid!';
+    $('#thResMsg').textContent=TH.mode==='online'?(winner===TH.myIdx?'Je hebt '+loser.name+' knock-out gegooid!':w.name+' heeft je knock-out gegooid.'):w.name.replace(' (bot)','')+' heeft '+loser.name.replace(' (bot)','')+' knock-out gegooid!';
     $('#thAgainBtn').textContent='Nog een keer';
     $('#thResult').classList.remove('hidden');
     if(TH.mode!=='friend'){if(title==='Jij wint!')sfx.win();else sfx.lose();}else sfx.win();
