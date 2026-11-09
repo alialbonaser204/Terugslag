@@ -2399,7 +2399,7 @@ function thHud(){
 const PL={active:false,mode:null,online:false,cv:null,ctx:null,W:0,H:0,dpr:1,
   seed:1,baseSeed:1,match:1,rematch:0,pillars:[],sched:[],t:0,clock:-3,phase:'idle',players:[],myIdx:0,
   sticks:{},parts:[],steps:[],ax:0,ay:0,size:300,cell:75,lastSent:0,winner:-1,oppPos:null,shake:0,warnPlayed:{}};
-const PL_N=4, PL_R=0.3, PL_SPEED=2.9, PL_LIVES=3, PL_W=0.62; // grid size, player radius, speed (cells/s), lives, stake width
+const PL_N=4, PL_R=0.3, PL_SPEED=2.4, PL_LIVES=3, PL_W=0.62; // grid size, player radius, speed (cells/s), lives, stake width
 
 // every field has exactly three stones; spawn corners (0,3) and (3,0) always stay free
 const PL_FIELDS=[
@@ -2659,7 +2659,7 @@ function plFrame(rdt){
       let mx=0,my=0;
       if(PL.mode==='bot'&&i===1){
         PL.bot.thinkT-=dt;if(PL.bot.thinkT<=0){PL.bot.thinkT=0.1+Math.random()*0.08;plBotThink(p,now);}
-        const dx=PL.bot.tx-p.x,dy=PL.bot.ty-p.y,l=Math.hypot(dx,dy),sp=PL.bot.hurry?0.82:0.65;if(l>0.06){mx=dx/l*Math.min(1,l*3)*sp;my=dy/l*Math.min(1,l*3)*sp;}
+        const dx=PL.bot.tx-p.x,dy=PL.bot.ty-p.y,l=Math.hypot(dx,dy),sp=PL.bot.hurry?0.92:0.7;if(l>0.06){mx=dx/l*Math.min(1,l*3)*sp;my=dy/l*Math.min(1,l*3)*sp;}
       }else [mx,my]=plJoyVec(p,i);
       if(PL.phase!=='play'&&PL.phase!=='count'){mx=my=0;}
       p.vx=mx*PL_SPEED;p.vy=my*PL_SPEED;
@@ -2674,7 +2674,7 @@ function plFrame(rdt){
     const spd=Math.hypot(p.vx,p.vy);
     if(spd>0.35){
       const ta=Math.atan2(p.vy,p.vx);let da=((ta-p.ang+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;p.ang+=da*(1-Math.exp(-12*dt));
-      const before=Math.floor(p.walk/Math.PI);p.walk+=dt*spd*11.5;
+      const before=Math.floor(p.walk/Math.PI);p.walk+=dt*spd*14;
       if(Math.floor(p.walk/Math.PI)!==before){ // a foot touches the ground
         p.stepSide=-p.stepSide;const nx=-Math.sin(p.ang),ny=Math.cos(p.ang);
         PL.steps.push({x:p.x+nx*0.05*p.stepSide+Math.cos(p.ang)*0.05,y:p.y+ny*0.05*p.stepSide+Math.sin(p.ang)*0.05,a:p.ang,t:2.2});
@@ -2802,7 +2802,7 @@ function plDrawPlayer(c,p,X,Y,C){
   if(p.dead&&PL.phase!=='over'&&Math.floor(PL.clock*8)%2===0)return;
   if(p.inv>0&&!p.dead&&Math.floor(p.inv*12)%2===0)return; // blink while invulnerable
   const x=X(p.x),y=Y(p.y),u=C*0.4; // u = body unit
-  const sw=Math.sin(p.walk),stride=u*0.16*sw;
+  const sw=Math.sin(p.walk),stride=u*0.13*sw;
   const skin='#'+FACES[p.face].skin.toString(16).padStart(6,'0');
   // shadow
   c.fillStyle='rgba(0,0,0,.2)';c.beginPath();c.ellipse(x+2,y+u*0.25,u*1.05,u*0.8,0,0,Math.PI*2);c.fill();
