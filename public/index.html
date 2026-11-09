@@ -561,6 +561,7 @@ const sfx={
         voice('sine',0.25,t=>500*Math.exp(-t*8)+120,env(0.003,0.24),0,1.1);
     }
   },
+  step(left,vol=1){if(!AC||!noiseBuf)return;noise(0.07,left?700:850,0.22*vol,'lowpass',1.2);tone(left?120:135,70,0.05,0.12*vol,'sine');},
   stab(){noise(0.16,1800,0.5,'bandpass',1.2);tone(180,90,0.12,0.4,'triangle',0.05);tone(70,45,0.15,0.35,'sine',0.08);},
   bonk(){ // cartoon bonk + "oof"
     if(!AC)return;tone(520,260,0.09,0.45,'triangle');tone(150,80,0.14,0.4,'sine');
@@ -2399,7 +2400,7 @@ function thHud(){
 const PL={active:false,mode:null,online:false,cv:null,ctx:null,W:0,H:0,dpr:1,
   seed:1,baseSeed:1,match:1,rematch:0,pillars:[],sched:[],t:0,clock:-3,phase:'idle',players:[],myIdx:0,
   sticks:{},parts:[],steps:[],ax:0,ay:0,size:300,cell:75,lastSent:0,winner:-1,oppPos:null,shake:0,warnPlayed:{}};
-const PL_N=4, PL_R=0.3, PL_SPEED=3.3, PL_LIVES=3, PL_W=0.62; // grid size, player radius, speed (cells/s), lives, stake width
+const PL_N=4, PL_R=0.3, PL_SPEED=2.9, PL_LIVES=3, PL_W=0.62; // grid size, player radius, speed (cells/s), lives, stake width
 
 function plMakeMatch(seed){
   const R=thRng(seed);
@@ -2410,16 +2411,14 @@ function plMakeMatch(seed){
   // attack schedule (same on every device for the same seed)
   const S=[];let t=0;
   while(t<300){
-    const lvl=Math.min(1,t/70),gap=2.3-1.3*lvl,warn=1.05-0.45*lvl,ty=R(),side=Math.floor(R()*4),parts=[];
-    if(ty<0.42){ // wave from one side, staggered lengths, always one short lane to escape
+    const lvl=Math.min(1,t/120),gap=3.6-1.2*lvl,warn=1.75-0.55*lvl,ty=R(),side=Math.floor(R()*4),parts=[];
+    // every attack comes from ONE side only (top, bottom, left or right)
+    if(ty<0.5){ // wave: all lanes from that side, staggered lengths, always one short lane to escape
       const safe=Math.floor(R()*4);
-      for(let l=0;l<4;l++)parts.push({side,lane:l,len:l===safe?0.8+R()*0.6:2+R()*2.2});
-    }else if(ty<0.72){ // 1-2 full lanes
+      for(let l=0;l<4;l++)parts.push({side,lane:l,len:l===safe?0.7+R()*0.5:1.8+R()*2.0});
+    }else{ // 1-2 long stakes from that side
       const a=Math.floor(R()*4);parts.push({side,lane:a,len:4.2});
-      if(R()<0.5+lvl*0.4){let b=(a+1+Math.floor(R()*3))%4;parts.push({side,lane:b,len:4.2});}
-    }else{ // pincer: two opposite sides, alternating lanes
-      const off=Math.floor(R()*2);
-      for(let l=0;l<4;l++){if((l+off)%2===0)parts.push({side,lane:l,len:2.2+R()*1.6});else parts.push({side:(side+2)%4,lane:l,len:2.2+R()*1.6});}
+      if(R()<0.35+lvl*0.4){let b=(a+1+Math.floor(R()*3))%4;parts.push({side,lane:b,len:4.2});}
     }
     S.push({t,warn,parts});t+=gap;
   }
@@ -2443,7 +2442,7 @@ function plRect(p,e){
   if(p.side===3)return {x0:0,x1:e,y0:c-h,y1:c+h};
   return {x0:PL_N-e,x1:PL_N,y0:c-h,y1:c+h};
 }
-const PL_THRUST=0.13,PL_HOLD=0.6,PL_BACK=0.32;
+const PL_THRUST=0.2,PL_HOLD=0.55,PL_BACK=0.4;
 function plExt(a,p,now){ // current extension of a stake part
   const τ=now-a.t-a.warn,len=plClipLen(p);
   if(τ<0)return 0;
@@ -2495,11 +2494,11 @@ function plStart(modeName,opts){
     n0=faceName(f0);n1=faceName(f1)+(modeName==='bot'?' (bot)':'');
   }
   PL.players=[
-    {x:0.5,y:3.5,vx:0,vy:0,face:f0,name:n0,color:'#e8483f',lives:PL_LIVES,inv:0,hitT:0,dead:false,joy:null,trailT:0},
-    {x:3.5,y:0.5,vx:0,vy:0,face:f1,name:n1,color:'#2f8fe0',lives:PL_LIVES,inv:0,hitT:0,dead:false,joy:null,trailT:0}];
+    {x:0.5,y:3.5,vx:0,vy:0,face:f0,name:n0,color:'#e8483f',dark:'#a3261f',lives:PL_LIVES,inv:0,hitT:0,dead:false,joy:null,trailT:0,ang:-Math.PI/2,walk:0,stepSide:1},
+    {x:3.5,y:0.5,vx:0,vy:0,face:f1,name:n1,color:'#2f8fe0',dark:'#1b5b97',lives:PL_LIVES,inv:0,hitT:0,dead:false,joy:null,trailT:0,ang:Math.PI/2,walk:0,stepSide:1}];
   PL.players.forEach(p=>thFaceImg(p.face));
   PL.clock=-3.2;PL.phase='count';PL.parts=[];PL.steps=[];PL.winner=-1;PL.oppPos=null;PL.warnPlayed={};PL.lastCount=4;
-  PL.bot={tx:3.5,ty:0.5,thinkT:0};
+  PL.bot={tx:3.5,ty:0.5,thinkT:0,miss:{}};
   plHud();
   if(PL.online){voiceStart();updateMicBtn();plSend(true);}
 }
@@ -2536,7 +2535,8 @@ function plJoyVec(p,idx){
 /* ---------- bot ---------- */
 function plBotThink(p,now){
   // look at what is coming (with a short "reaction" delay) and walk to the nearest safe spot
-  const seen=plActive(now).filter(a=>now-a.t>0.16);
+  PL.bot.miss=PL.bot.miss||{};
+  const seen=plActive(now).filter(a=>{const k=a.t.toFixed(3);if(!(k in PL.bot.miss))PL.bot.miss[k]=Math.random()<0.2+Math.min(0.12,now/600);return now-a.t>0.55&&!PL.bot.miss[k];});
   const danger=(x,y)=>{let d=0;for(const a of seen){const until=a.t+a.warn-now;
       for(const part of a.parts){const q=plRect(part,plClipLen(part));if(plCircleRect(x,y,PL_R+0.14,q))d+=until<0.55?10:4;}}return d;};
   let best=null;
@@ -2644,7 +2644,7 @@ function plFrame(rdt){
       let mx=0,my=0;
       if(PL.mode==='bot'&&i===1){
         PL.bot.thinkT-=dt;if(PL.bot.thinkT<=0){PL.bot.thinkT=0.1+Math.random()*0.08;plBotThink(p,now);}
-        const dx=PL.bot.tx-p.x,dy=PL.bot.ty-p.y,l=Math.hypot(dx,dy),sp=PL.bot.hurry?1:0.8;if(l>0.06){mx=dx/l*Math.min(1,l*3)*sp;my=dy/l*Math.min(1,l*3)*sp;}
+        const dx=PL.bot.tx-p.x,dy=PL.bot.ty-p.y,l=Math.hypot(dx,dy),sp=PL.bot.hurry?0.82:0.65;if(l>0.06){mx=dx/l*Math.min(1,l*3)*sp;my=dy/l*Math.min(1,l*3)*sp;}
       }else [mx,my]=plJoyVec(p,i);
       if(PL.phase!=='play'&&PL.phase!=='count'){mx=my=0;}
       p.vx=mx*PL_SPEED;p.vy=my*PL_SPEED;
@@ -2656,7 +2656,16 @@ function plFrame(rdt){
         if(d<PL_R){if(d<1e-4){dx=0;dy=-1;d=1;}p.x=nx+dx/d*PL_R;p.y=ny+dy/d*PL_R;}}
     }
     // footprints
-    if(Math.hypot(p.vx,p.vy)>0.5){p.trailT-=dt;if(p.trailT<=0){p.trailT=0.09;PL.steps.push({x:p.x,y:p.y,t:1.2,c:p.color});}}
+    const spd=Math.hypot(p.vx,p.vy);
+    if(spd>0.35){
+      const ta=Math.atan2(p.vy,p.vx);let da=((ta-p.ang+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;p.ang+=da*(1-Math.exp(-12*dt));
+      const before=Math.floor(p.walk/Math.PI);p.walk+=dt*spd*4.2;
+      if(Math.floor(p.walk/Math.PI)!==before){ // a foot touches the ground
+        p.stepSide=-p.stepSide;const nx=-Math.sin(p.ang),ny=Math.cos(p.ang);
+        PL.steps.push({x:p.x+nx*0.09*p.stepSide+Math.cos(p.ang)*0.06,y:p.y+ny*0.09*p.stepSide+Math.sin(p.ang)*0.06,a:p.ang,t:2.2});
+        const vol=(PL.online&&i!==PL.myIdx)?0.5:1;sfx.step(p.stepSide>0,vol);
+      }
+    }else{p.walk+=(Math.round(p.walk/Math.PI)*Math.PI-p.walk)*(1-Math.exp(-10*dt));}
   }
   // players bump into each other (offline: both move; online: only push yourself)
   {const a=PL.players[0],b=PL.players[1],dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);
@@ -2669,7 +2678,7 @@ function plFrame(rdt){
     for(let i=0;i<2;i++){if(PL.online&&i!==PL.myIdx)continue;const p=PL.players[i];if(!p.dead&&plCircleRect(p.x,p.y,PL_R*0.85,q))plHit(i);}
   }
   for(const q of PL.parts){q.x+=q.vx*dt;q.y+=q.vy*dt;q.vx*=Math.exp(-3*dt);q.vy*=Math.exp(-3*dt);q.t-=dt;}PL.parts=PL.parts.filter(q=>q.t>0);
-  for(const s of PL.steps)s.t-=dt;PL.steps=PL.steps.filter(s=>s.t>0);if(PL.steps.length>160)PL.steps.splice(0,PL.steps.length-160);
+  for(const s of PL.steps)s.t-=dt;PL.steps=PL.steps.filter(s=>s.t>0);if(PL.steps.length>80)PL.steps.splice(0,PL.steps.length-80);
   PL.shake*=Math.exp(-7*dt);
   if(PL.online){plSend(false);updateVoiceMeters(rdt);}
   plDraw(now);
@@ -2705,7 +2714,7 @@ function plDraw(now){
         if(p.side===1)c.fillRect(X(PL_N)+C*0.03,Y(u),th,(u2-u)*C);}}
   }
   // footprints
-  for(const s of PL.steps){c.fillStyle=s.c;c.globalAlpha=Math.max(0,s.t/1.2)*0.35;c.beginPath();c.arc(X(s.x),Y(s.y),C*0.05,0,Math.PI*2);c.fill();}c.globalAlpha=1;
+  for(const s of PL.steps){c.fillStyle='#a8702f';c.globalAlpha=Math.min(1,s.t/2.2)*0.45;c.beginPath();c.ellipse(X(s.x),Y(s.y),C*0.065,C*0.035,s.a,0,Math.PI*2);c.fill();}c.globalAlpha=1;
   // pillars (sandstone blocks)
   for(const [cx,cy] of PL.pillars){
     const x=X(cx)+C*0.08,y=Y(cy)+C*0.08,w=C*0.84;
@@ -2760,16 +2769,37 @@ function plDrawStake(c,side,lane,e,X,Y,C,inside){
   c.restore();
 }
 function plDrawPlayer(c,p,X,Y,C){
-  if(p.dead&&Math.floor(PL.clock*8)%2===0&&PL.phase!=='over')return;
+  if(p.dead&&PL.phase!=='over'&&Math.floor(PL.clock*8)%2===0)return;
   if(p.inv>0&&!p.dead&&Math.floor(p.inv*12)%2===0)return; // blink while invulnerable
-  const x=X(p.x),y=Y(p.y),r=C*PL_R*1.25;
-  c.fillStyle='rgba(0,0,0,.22)';c.beginPath();c.ellipse(x+3,y+r*0.75,r*0.95,r*0.4,0,0,Math.PI*2);c.fill();
-  c.fillStyle=p.color;c.beginPath();c.arc(x,y,r+4,0,Math.PI*2);c.fill();
-  c.strokeStyle='#1d1d1d';c.lineWidth=3;c.stroke();
+  const x=X(p.x),y=Y(p.y),u=C*0.4; // u = body unit
+  const sw=Math.sin(p.walk),stride=u*0.55*sw;
+  const skin='#'+FACES[p.face].skin.toString(16).padStart(6,'0');
+  // shadow
+  c.fillStyle='rgba(0,0,0,.2)';c.beginPath();c.ellipse(x+2,y+u*0.25,u*1.05,u*0.8,0,0,Math.PI*2);c.fill();
+  c.save();c.translate(x,y);c.rotate(p.ang); // +x = walking direction
+  c.lineJoin='round';c.strokeStyle='#1d1d1d';c.lineWidth=Math.max(2,u*0.09);
+  // feet (alternate forward/back)
+  c.fillStyle='#2a2320';
+  c.beginPath();c.ellipse(stride,-u*0.33,u*0.32,u*0.17,0,0,Math.PI*2);c.fill();c.stroke();
+  c.beginPath();c.ellipse(-stride,u*0.33,u*0.32,u*0.17,0,0,Math.PI*2);c.fill();c.stroke();
+  // arms swing opposite to the feet
+  c.fillStyle=p.color;
+  c.beginPath();c.ellipse(-stride*0.8,-u*0.72,u*0.26,u*0.15,0,0,Math.PI*2);c.fill();c.stroke();
+  c.beginPath();c.ellipse(stride*0.8,u*0.72,u*0.26,u*0.15,0,0,Math.PI*2);c.fill();c.stroke();
+  c.fillStyle=skin;
+  c.beginPath();c.arc(-stride*0.8+u*0.24,-u*0.74,u*0.13,0,Math.PI*2);c.fill();c.stroke();
+  c.beginPath();c.arc(stride*0.8+u*0.24,u*0.74,u*0.13,0,Math.PI*2);c.fill();c.stroke();
+  // shoulders / body
+  c.fillStyle=p.color;c.beginPath();c.ellipse(0,0,u*0.48,u*0.72,0,0,Math.PI*2);c.fill();c.stroke();
+  c.fillStyle=p.dark;c.beginPath();c.ellipse(-u*0.12,0,u*0.2,u*0.52,0,0,Math.PI*2);c.fill();
+  c.restore();
+  // head = your face (kept upright so you always recognise it), a little bob while walking
+  const hr=u*0.52,hb=-Math.abs(Math.cos(p.walk))*u*0.07,hx=x+Math.cos(p.ang)*u*0.18,hy=y+Math.sin(p.ang)*u*0.18-u*0.55+hb;
+  c.fillStyle=p.color;c.beginPath();c.arc(hx,hy,hr+3,0,Math.PI*2);c.fill();c.strokeStyle='#1d1d1d';c.lineWidth=2.5;c.stroke();
   const im=thFaceImg(p.face);
-  c.save();c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.clip();c.fillStyle='#fff';c.fillRect(x-r,y-r,2*r,2*r);
-  if(im.complete)c.drawImage(im,x-r*1.15,y-r*1.15,r*2.3,r*2.3);
-  if(p.hitT>0||p.dead){const E=FACE_EYES[p.face]||[[100,115],[156,115]],s=r*2.3,x0=x-r*1.15,y0=y-r*1.15,rr=s*0.055;
+  c.save();c.beginPath();c.arc(hx,hy,hr,0,Math.PI*2);c.clip();c.fillStyle='#fff';c.fillRect(hx-hr,hy-hr,2*hr,2*hr);
+  if(im.complete)c.drawImage(im,hx-hr*1.12,hy-hr*1.12,hr*2.24,hr*2.24);
+  if(p.hitT>0||p.dead){const E=FACE_EYES[p.face]||[[100,115],[156,115]],s=hr*2.24,x0=hx-hr*1.12,y0=hy-hr*1.12,rr=s*0.055;
     c.strokeStyle='#161616';c.lineWidth=Math.max(2,s*0.035);c.lineCap='round';
     for(const [ex,ey] of E){const ex2=x0+ex/256*s,ey2=y0+ey/256*s;c.beginPath();c.moveTo(ex2-rr,ey2-rr);c.lineTo(ex2+rr,ey2+rr);c.moveTo(ex2-rr,ey2+rr);c.lineTo(ex2+rr,ey2-rr);c.stroke();}}
   c.restore();
