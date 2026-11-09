@@ -86,6 +86,9 @@
   .lv:disabled{opacity:.35;cursor:default}
   .lv.cur{border-color:#ffbe6b;box-shadow:0 0 0 2px rgba(255,190,107,.5)}
   .facePick{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:10px;max-width:340px;font-weight:700;font-size:14px;color:#ffe2a8}
+.faceItem{display:flex;flex-direction:column;align-items:center;gap:4px}
+  .faceName{font:800 11px Rubik,sans-serif;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+  .faceItem:has(.on) .faceName{color:#ffbe6b}
   .faceBtn{width:58px;height:58px;border-radius:50%;padding:0;border:3px solid rgba(255,255,255,.25);background:rgba(94,53,25,.85);cursor:pointer;overflow:hidden;display:grid;place-items:center;transition:transform .15s}
   .faceBtn img{width:54px;height:54px;object-fit:contain}
   .faceBtn.on{border-color:#ffbe6b;box-shadow:0 0 0 3px rgba(255,190,107,.45);transform:scale(1.08)}
@@ -720,16 +723,20 @@ function setPilotFace(gun,face){
   gun.pilot.face=face;gun.pilot.head.material.map=faceTex[face];gun.pilot.head.material.needsUpdate=true;gun.pilot.skin.color.setHex(FACES[face].skin);
 }
 function uprightPilot(gun,a){if(gun&&gun.pilot){gun.pilot.head.rotation.z=-a;}}
+const FACE_NAMES=['Ali','Shahab','Brigit','Gijs','Mohi'];
+const faceName=i=>FACE_NAMES[i]||('Speler '+(i+1));
 function renderFacePick(){
   document.querySelectorAll('.facePick').forEach(box=>{
     box.innerHTML='';
     const lab=document.createElement('span');lab.textContent='Kies je speler';lab.style.flexBasis='100%';lab.style.textAlign='center';box.appendChild(lab);
     FACES.forEach((f,i)=>{
+      const item=document.createElement('div');item.className='faceItem';
       const b=document.createElement('button');b.className='faceBtn'+((myFaceChoice===null?0:myFaceChoice)===i?' on':'');
-      const img=document.createElement('img');img.src=f.src;img.alt='Speler '+(i+1);b.appendChild(img);
+      const img=document.createElement('img');img.src=f.src;img.alt=faceName(i);b.appendChild(img);
+      const nm=document.createElement('span');nm.className='faceName';nm.textContent=faceName(i);item.append(b,nm);
       b.onclick=e=>{e.stopPropagation();initAudio();sfx.click();myFaceChoice=i;try{localStorage.setItem('terugslag_face',String(i));}catch(_){}
-        if(player)setPilotFace(player.gun,i);renderFacePick();if(NET.duel)sendNet(true);};
-      box.appendChild(b);
+        if(player)setPilotFace(player.gun,i);renderFacePick();if(NET.duel)sendNet(true);if(NET.room&&NET.code&&NET.host)NET.room.presence({open:NET.code,face:i}).catch(()=>{});};
+      box.appendChild(item);
     });
   });
 }
@@ -1124,8 +1131,8 @@ async function renderOpenList(){
   list.innerHTML='';
   for(const p of open){
     const row=document.createElement('div');row.className='openItem';
-    const label=document.createElement('span');label.textContent='Duel van speler';
-    nameOf(p.by).then(n=>{if(n)label.textContent='Duel van '+n;});
+    const label=document.createElement('span');const f=p.presence.face;
+    label.textContent='Duel van '+(Number.isInteger(f)&&f>=0&&f<FACES.length?faceName(f):'speler');
     const b=document.createElement('button');b.textContent='Speel';
     b.onclick=e=>{e.stopPropagation();initAudio();sfx.click();joinDuel(p.presence.open);};
     row.append(label,b);list.appendChild(row);
@@ -1143,7 +1150,7 @@ async function hostDuel(){
   $('#codeBig').textContent=code;$('#onMain').style.display='none';$('#onWait').style.display='';
   $('#waitMsg').innerHTML='Geef deze code aan je vriend.<br>Wachten op tegenstander…';$('#onBackBtn').textContent='Stoppen';
   onStatus('Je duel staat klaar.');
-  try{await NET.room.presence({open:code});}catch(e){}
+  try{await NET.room.presence({open:code,face:myFace()});}catch(e){}
   watchDuel();
 }
 async function joinDuel(code){
@@ -1175,8 +1182,8 @@ function onDuelPeers(peers){
     if(!o)return;
     if(!NET.host&&o.presence&&o.presence.oppPeer&&o.presence.oppPeer!==myPeer(peers)){onStatus('Dit duel is al vol.');leaveDuel();return;}
     NET.oppPeer=o.peer;NET.oppBy=o.by;NET.oppName='Tegenstander';
-    nameOf(o.by).then(n=>{if(n){NET.oppName=n;updateHUD();}});
-    if(NET.host&&NET.room)NET.room.presence({open:null}).catch(()=>{});
+    {const f=o.presence&&o.presence.face;if(Number.isInteger(f)&&f>=0&&f<FACES.length){NET.oppFace=f;NET.oppName=faceName(f);}}
+    if(NET.host&&NET.room)NET.room.presence({open:null,face:null}).catch(()=>{});
     startDuel();
   }
   const o=peers.find(p=>p.peer===NET.oppPeer);
@@ -1201,7 +1208,7 @@ function handleOpp(ps){
   if(!G||!G.online)return;
   // rematch
   if(NET.phase==='matchEnd'&&NET.rematch===NET.match+1&&(ps.rematch===NET.match+1||ps.match===NET.match+1)){startRematch();return;}
-  if(Number.isInteger(ps.face)&&ps.face>=0&&ps.face<FACES.length&&ps.face!==NET.oppFace){NET.oppFace=ps.face;setPilotFace(OPP.gun,ps.face);}
+  if(Number.isInteger(ps.face)&&ps.face>=0&&ps.face<FACES.length&&(ps.face!==NET.oppFace||NET.oppName!==faceName(ps.face))){NET.oppFace=ps.face;NET.oppName=faceName(ps.face);setPilotFace(OPP.gun,ps.face);updateHUD();}
   VOICE.oppMic=ps.mic===true;VOICE.oppTalk=ps.talk===true;VOICE.oppHears=ps.hear===true;
   if(ps.match!==NET.match)return;
   if(Array.isArray(ps.st)&&ps.st.length===6&&ps.st.every(v=>typeof v==='number'&&isFinite(v))){
@@ -1581,7 +1588,7 @@ function updateBulletTime(rdt){
 function updateHUD(){
   if(!G)return;
   if(G.online){
-    $('#lvlInfo').firstChild.nodeValue='JIJ '+NET.oppLosses+' – '+NET.losses;
+    $('#lvlInfo').firstChild.nodeValue=faceName(myFace()).toUpperCase().slice(0,8)+' '+NET.oppLosses+' – '+NET.losses;
     $('#enemyCount').textContent=(VOICE.oppTalk?'🗣️':'')+(VOICE.hearing?'🔊':'')+((VOICE.oppTalk||VOICE.hearing)?' ':'')+'vs '+NET.oppName.slice(0,12);
     $('#hearts').style.display='none';$('#roundInfo').style.display='';
     const rn=Math.min(NET.losses+NET.oppLosses+(NET.phase==='roundEnd'||NET.phase==='matchEnd'?0:1),99);
