@@ -2402,27 +2402,43 @@ const PL={active:false,mode:null,online:false,cv:null,ctx:null,W:0,H:0,dpr:1,
   sticks:{},parts:[],steps:[],ax:0,ay:0,size:300,cell:75,lastSent:0,winner:-1,oppPos:null,shake:0,warnPlayed:{}};
 const PL_N=4, PL_R=0.3, PL_SPEED=2.9, PL_LIVES=3, PL_W=0.62; // grid size, player radius, speed (cells/s), lives, stake width
 
+// every field has exactly three stones; spawn corners (0,3) and (3,0) always stay free
+const PL_FIELDS=[
+  {name:'Zalm',      stones:[[0,0],[2,1],[2,3]],bg:'#33587a',a:['#fdae7a','#f9a875'],b:['#e5917f','#d8877a'],st:['#735c70','#45313f'],foot:'#9a4f3a'},
+  {name:'Woestijn',  stones:[[1,1],[2,2],[3,3]],bg:'#3d5378',a:['#f7d79f','#f1cf93'],b:['#ecbf7d','#e2b370'],st:['#8b6648','#573d29'],foot:'#a0703a'},
+  {name:'Oase',      stones:[[1,0],[1,2],[3,2]],bg:'#2c4d5e',a:['#b7e4c7','#aedcbe'],b:['#8fd3b0','#83c6a4'],st:['#5c6b8a','#3b4560'],foot:'#4f8a6a'},
+  {name:'Lavendel',  stones:[[0,1],[2,0],[2,2]],bg:'#2f3563',a:['#e6cdf2','#ddc2ea'],b:['#c9a7e0','#bd9bd4'],st:['#5b4a7a','#3a2d52'],foot:'#7d5c97'},
+  {name:'Blok',      stones:[[1,1],[2,1],[1,2]],bg:'#24384f',a:['#d2ecfa','#c6e2f2'],b:['#a9d4ef','#9cc7e3'],st:['#60708a','#3c475c'],foot:'#5d86a3'},
+  {name:'Hoeken',    stones:[[0,0],[3,3],[1,2]],bg:'#4a3350',a:['#ffd3a6','#fbc897'],b:['#f5a58c','#ea9880'],st:['#6b4d63','#432e3e'],foot:'#a35a48'},
+  {name:'Zigzag',    stones:[[1,1],[3,2],[0,2]],bg:'#36506a',a:['#fbe7a8','#f4dd98'],b:['#e8c26e','#dcb560'],st:['#7a5f45','#4c3a28'],foot:'#9b7a3a'},
+  {name:'Kruis',     stones:[[1,2],[2,1],[3,3]],bg:'#3a3f5c',a:['#ffc4b8','#f9b8ab'],b:['#ef9a9a','#e38c8c'],st:['#6c5470','#433247'],foot:'#a05656'},
+];
 function plMakeMatch(seed){
   const R=thRng(seed);
-  // pillars: 3 random cells, never on a spawn cell
-  const forbid=new Set(['0,3','3,0','0,2','1,3','3,1','2,0']);const cells=[];
-  for(let x=0;x<PL_N;x++)for(let y=0;y<PL_N;y++)if(!forbid.has(x+','+y))cells.push([x,y]);
-  PL.pillars=[];for(let k=0;k<3&&cells.length;k++){const i=Math.floor(R()*cells.length);PL.pillars.push(cells.splice(i,1)[0]);}
+  // field: one of the hand-made stone layouts (with a random mirror) + its own colours
+  const F=PL_FIELDS[Math.floor(R()*PL_FIELDS.length)],flip=R()<0.5,swap=R()<0.5;
+  PL.field=F;
+  PL.pillars=F.stones.map(([x,y])=>{if(flip)[x,y]=[3-y,3-x];if(swap)[x,y]=[y,x];return [x,y];});
   // attack schedule (same on every device for the same seed)
+  // every stake shoots all the way to the other wall; only a stone can stop it
   const S=[];let t=0;
   while(t<300){
-    const lvl=Math.min(1,t/120),gap=3.6-1.2*lvl,warn=1.75-0.55*lvl,ty=R(),side=Math.floor(R()*4),parts=[];
-    // every attack comes from ONE side only (top, bottom, left or right)
-    if(ty<0.5){ // wave: all lanes from that side, staggered lengths, always one short lane to escape
-      const safe=Math.floor(R()*4);
-      for(let l=0;l<4;l++)parts.push({side,lane:l,len:l===safe?0.7+R()*0.5:1.8+R()*2.0});
-    }else{ // 1-2 long stakes from that side
-      const a=Math.floor(R()*4);parts.push({side,lane:a,len:4.2});
-      if(R()<0.35+lvl*0.4){let b=(a+1+Math.floor(R()*3))%4;parts.push({side,lane:b,len:4.2});}
-    }
+    const lvl=Math.min(1,t/120),gap=3.6-1.2*lvl,warn=1.75-0.55*lvl,side=Math.floor(R()*4);
+    let n=1+(R()<0.5+lvl*0.3?1:0)+(R()<0.12+lvl*0.35?1:0);
+    const wall=R()<0.12+lvl*0.18;if(wall&&plHasCover(side))n=4; // full wall: hide behind a stone!
+    const lanes=[0,1,2,3];for(let i=3;i>0;i--){const j=Math.floor(R()*(i+1));[lanes[i],lanes[j]]=[lanes[j],lanes[i]];}
+    const parts=lanes.slice(0,n).map(l=>({side,lane:l,len:PL_N}));
     S.push({t,warn,parts});t+=gap;
   }
   PL.sched=S;
+}
+function plHasCover(side){ // is there a free cell hidden behind a stone, seen from this side?
+  const isP=(x,y)=>PL.pillars.some(([a,b])=>a===x&&b===y);
+  for(const [cx,cy] of PL.pillars)for(let k=0;k<PL_N;k++){
+    let x,y;if(side===0){x=cx;y=k;if(y<=cy)continue;}else if(side===2){x=cx;y=k;if(y>=cy)continue;}
+    else if(side===3){x=k;y=cy;if(x<=cx)continue;}else{x=k;y=cy;if(x>=cx)continue;}
+    if(!isP(x,y))return true;}
+  return false;
 }
 // stake geometry: returns rect {x0,y0,x1,y1} in cell units for a part at extension e (0..len), clipped by pillars
 function plClipLen(p){
@@ -2442,7 +2458,7 @@ function plRect(p,e){
   if(p.side===3)return {x0:0,x1:e,y0:c-h,y1:c+h};
   return {x0:PL_N-e,x1:PL_N,y0:c-h,y1:c+h};
 }
-const PL_THRUST=0.2,PL_HOLD=0.55,PL_BACK=0.4;
+const PL_THRUST=0.28,PL_HOLD=0.5,PL_BACK=0.45;
 function plExt(a,p,now){ // current extension of a stake part
   const τ=now-a.t-a.warn,len=plClipLen(p);
   if(τ<0)return 0;
@@ -2472,7 +2488,7 @@ function plResize(){
   const w=innerWidth,h=innerHeight,dpr=Math.min(devicePixelRatio||1,2);
   PL.cv.width=Math.round(w*dpr);PL.cv.height=Math.round(h*dpr);PL.cv.style.width=w+'px';PL.cv.style.height=h+'px';
   PL.W=w;PL.H=h;PL.dpr=dpr;
-  PL.size=Math.min(w*0.9,h*(PL.mode==='friend'?0.42:0.5));PL.cell=PL.size/PL_N;
+  PL.size=Math.min(w*0.84,h*(PL.mode==='friend'?0.42:0.5));PL.cell=PL.size/PL_N;
   PL.ax=(w-PL.size)/2;PL.ay=(h-PL.size)/2-(PL.mode==='friend'?0:h*0.04);
 }
 function plShowMenu(){plStop();hideScreens();renderFacePick();$('#plMenu').classList.remove('hidden');mode='menu';}
@@ -2686,48 +2702,58 @@ function plFrame(rdt){
 
 /* ---------- drawing ---------- */
 function plDraw(now){
-  const c=PL.ctx,W=PL.W,H=PL.H,C=PL.cell;
+  const c=PL.ctx,W=PL.W,H=PL.H,C=PL.cell,FL=PL.field||PL_FIELDS[0];
   c.setTransform(PL.dpr,0,0,PL.dpr,0,0);
-  const g=c.createLinearGradient(0,0,0,H);g.addColorStop(0,'#2d3f78');g.addColorStop(1,'#43325e');c.fillStyle=g;c.fillRect(0,0,W,H);
+  c.fillStyle=FL.bg;c.fillRect(0,0,W,H);
   c.save();c.translate((Math.random()*2-1)*PL.shake*8,(Math.random()*2-1)*PL.shake*8);
-  const X=x=>PL.ax+x*C,Y=y=>PL.ay+y*C;
-  // stakes resting outside the arena (decor) + the ones striking
+  const X=x=>PL.ax+x*C,Y=y=>PL.ay+y*C,F=C*0.3,SH=C*0.15;
+  // how far every stake sticks out right now (negative = pulling back just before the strike)
   const act=plActive(now),ext={};
-  for(const a of act)for(const p of a.parts){const k=p.side+'_'+p.lane,e=plExt(a,p,now);ext[k]=Math.max(ext[k]||0,e);}
-  for(let side=0;side<4;side++)for(let lane=0;lane<4;lane++)plDrawStake(c,side,lane,ext[side+'_'+lane]||0,X,Y,C);
-  // floor
-  c.fillStyle='#3a1e0c';c.fillRect(X(0)-C*0.16,Y(0)-C*0.16,C*PL_N+C*0.32,C*PL_N+C*0.32);
+  for(const a of act)for(const p of a.parts){const k=p.side+'_'+p.lane;let e=plExt(a,p,now);
+    const pre=a.t+a.warn-now;if(pre>0&&pre<0.5)e=-0.22*(1-pre/0.5)+(Math.random()-0.5)*0.05; // wind-up + shiver
+    if(e>0||ext[k]===undefined||(ext[k]<=0&&e<ext[k]))ext[k]=e;}
+  const E=(side,lane)=>ext[side+'_'+lane]||0;
+  // arena shadow + black frame
+  c.fillStyle='rgba(10,20,35,.35)';c.fillRect(X(0)-F+SH,Y(0)-F+SH,C*PL_N+F*2,C*PL_N+F*2);
+  c.fillStyle='#000';c.fillRect(X(0)-F,Y(0)-F,C*PL_N+F*2,C*PL_N+F*2);
+  // floor: two-colour checkerboard with an inner square
   for(let i=0;i<PL_N;i++)for(let j=0;j<PL_N;j++){
-    c.fillStyle=(i+j)%2?'#efbf7c':'#f6cf91';c.fillRect(X(i),Y(j),C+0.5,C+0.5);
-    c.fillStyle=(i+j)%2?'rgba(255,255,255,.07)':'rgba(170,100,40,.08)';c.fillRect(X(i)+C*0.2,Y(j)+C*0.2,C*0.6,C*0.6);
+    const col=(i+j)%2===1?FL.b:FL.a;
+    c.fillStyle=col[0];c.fillRect(X(i),Y(j),C+0.5,C+0.5);
+    c.fillStyle=col[1];c.fillRect(X(i)+C*0.13,Y(j)+C*0.13,C*0.74,C*0.74);
   }
-  // warnings: red dashes on the wall where a stake is about to come in
+  // shadows of stakes + stones (fall to the bottom-right)
+  c.fillStyle='rgba(40,20,30,.28)';
+  for(let side=0;side<4;side++)for(let lane=0;lane<4;lane++)plDrawStake(c,side,lane,E(side,lane),X,Y,C,SH);
+  for(const [cx,cy] of PL.pillars){thRound(c,X(cx)+C*0.02+SH,Y(cy)+C*0.02+SH,C*0.96,C*0.96,C*0.13);c.fill();}
+  // warnings: blinking red lane up to where a stone stops it + red marks on the wall
   for(const a of act){
     if(now>=a.t+a.warn)continue;
-    const blink=Math.floor((now-a.t)*10)%2===0;if(!blink)continue;
-    c.fillStyle='#ff2e2e';
-    for(const p of a.parts){if(plClipLen(p)<=0.05)continue;const l0=p.lane+0.5-PL_W/2,l1=p.lane+0.5+PL_W/2,th=C*0.12;
+    const blink=Math.floor((now-a.t)*8)%2===0;
+    for(const p of a.parts){const len=plClipLen(p);if(len<=0.05)continue;const q=plRect(p,len);
+      c.fillStyle=blink?'rgba(255,30,30,.32)':'rgba(255,30,30,.15)';c.fillRect(X(q.x0),Y(q.y0),(q.x1-q.x0)*C,(q.y1-q.y0)*C);
+      if(!blink)continue;c.fillStyle='#ff2e2e';const l0=p.lane+0.5-PL_W/2,l1=p.lane+0.5+PL_W/2,th=F*0.45;
       for(let k=0;k<5;k++){const u=l0+(l1-l0)*(k/5+0.04),u2=l0+(l1-l0)*((k+0.6)/5);
-        if(p.side===0)c.fillRect(X(u),Y(0)-C*0.15,(u2-u)*C,th);
-        if(p.side===2)c.fillRect(X(u),Y(PL_N)+C*0.03,(u2-u)*C,th);
-        if(p.side===3)c.fillRect(X(0)-C*0.15,Y(u),th,(u2-u)*C);
-        if(p.side===1)c.fillRect(X(PL_N)+C*0.03,Y(u),th,(u2-u)*C);}}
+        if(p.side===0)c.fillRect(X(u),Y(0)-F*0.72,(u2-u)*C,th);
+        if(p.side===2)c.fillRect(X(u),Y(PL_N)+F*0.27,(u2-u)*C,th);
+        if(p.side===3)c.fillRect(X(0)-F*0.72,Y(u),th,(u2-u)*C);
+        if(p.side===1)c.fillRect(X(PL_N)+F*0.27,Y(u),th,(u2-u)*C);}}
   }
   // footprints
-  for(const s of PL.steps){c.fillStyle='#a8702f';c.globalAlpha=Math.min(1,s.t/2.2)*0.45;c.beginPath();c.ellipse(X(s.x),Y(s.y),C*0.065,C*0.035,s.a,0,Math.PI*2);c.fill();}c.globalAlpha=1;
-  // pillars (sandstone blocks)
+  for(const s of PL.steps){c.fillStyle=FL.foot;c.globalAlpha=Math.min(1,s.t/2.2)*0.4;c.beginPath();c.ellipse(X(s.x),Y(s.y),C*0.065,C*0.035,s.a,0,Math.PI*2);c.fill();}c.globalAlpha=1;
+  // stones - the only thing that stops a stake
   for(const [cx,cy] of PL.pillars){
-    const x=X(cx)+C*0.08,y=Y(cy)+C*0.08,w=C*0.84;
-    c.fillStyle='rgba(0,0,0,.25)';thRound(c,x+3,y+6,w,w,C*0.14);c.fill();
-    c.fillStyle='#9a5a3c';thRound(c,x,y+C*0.08,w,w-C*0.04,C*0.14);c.fill();
-    c.fillStyle='#c98c55';thRound(c,x,y,w,w-C*0.1,C*0.14);c.fill();
-    c.strokeStyle='#3a1e0c';c.lineWidth=3;thRound(c,x,y,w,w,C*0.14);c.stroke();
-    c.strokeStyle='rgba(255,230,190,.35)';c.lineWidth=2;c.beginPath();c.moveTo(x+w*0.2,y+w*0.35);c.lineTo(x+w*0.8,y+w*0.35);c.moveTo(x+w*0.2,y+w*0.6);c.lineTo(x+w*0.8,y+w*0.6);c.stroke();
+    const x=X(cx)+C*0.02,y=Y(cy)+C*0.02,w=C*0.96,r=C*0.13,lw=Math.max(3,C*0.045);
+    c.fillStyle='#000';thRound(c,x-lw/2,y-lw/2,w+lw,w+lw,r+lw/2);c.fill();
+    c.fillStyle=FL.st[1];thRound(c,x,y,w,w,r);c.fill();
+    c.fillStyle=FL.st[0];thRound(c,x,y,w,w*0.9,r);c.fill();
+    c.strokeStyle='#000';c.lineWidth=lw*0.6;c.beginPath();c.moveTo(x+r*0.4,y+w*0.9);c.lineTo(x+w-r*0.4,y+w*0.9);c.stroke();
+    c.strokeStyle='rgba(255,255,255,.09)';c.lineWidth=lw*0.7;thRound(c,x+lw,y+lw,w-lw*2,w*0.9-lw*2,r*0.7);c.stroke();
   }
-  // striking stakes over the floor
-  for(let side=0;side<4;side++)for(let lane=0;lane<4;lane++){const e=ext[side+'_'+lane]||0;if(e>0.02)plDrawStake(c,side,lane,e,X,Y,C,true);}
   // players
   for(let i=0;i<2;i++)plDrawPlayer(c,PL.players[i],X,Y,C);
+  // stakes: resting on the frame, or shooting across the field
+  for(let side=0;side<4;side++)for(let lane=0;lane<4;lane++)plDrawStake(c,side,lane,E(side,lane),X,Y,C);
   // stars
   for(const q of PL.parts){c.globalAlpha=Math.min(1,q.t*2);c.fillStyle=q.star?'#fff6b0':'#ffffff';c.font=Math.round(C*0.26)+'px sans-serif';c.textAlign='center';c.textBaseline='middle';
     if(q.star)c.fillText('★',X(q.x),Y(q.y));else{c.beginPath();c.arc(X(q.x),Y(q.y),C*0.04,0,Math.PI*2);c.fill();}}c.globalAlpha=1;c.textBaseline='alphabetic';
@@ -2741,31 +2767,36 @@ function plDraw(now){
   if(PL.phase==='count'&&PL.mode!=='online'||PL.phase==='count'&&PL.online){
     c.globalAlpha=0.55;c.fillStyle='#fff';c.font='800 13px Rubik,sans-serif';c.textAlign='center';
     c.fillText('Sleep je vinger om te lopen',W/2,PL.ay+PL.size+C*0.95+30);
+    if(PL.mode!=='friend'){c.font='400 20px Bungee,Rubik,sans-serif';c.globalAlpha=0.9;c.fillText('Veld: '+FL.name,W/2,PL.ay-C*0.95-14);}c.globalAlpha=0.55;c.font='800 13px Rubik,sans-serif';
     if(PL.mode==='friend'){c.save();c.translate(W/2,PL.ay-C*0.95-30);c.rotate(Math.PI);c.fillText('Sleep je vinger om te lopen',0,0);c.restore();}
     c.globalAlpha=1;
   }
 }
-function plDrawStake(c,side,lane,e,X,Y,C,inside){
-  // a wooden log with a steel spike; tip sits at the wall when e=0, moves e cells inwards
-  const L=C*3.2,w=C*PL_W,u=lane+0.5;
-  c.save();
+function plDrawStake(c,side,lane,e,X,Y,C,shadow){
+  // wooden log + steel collar + steel spike. tip sits on the floor edge when e=0, moves e cells inwards.
+  const L=C*(PL_N+4),w=C*0.74,u=lane+0.5,sp=C*0.3,cl=C*0.075,o=shadow||0;
   let tx,ty,ang;
   if(side===0){tx=X(u);ty=Y(0)+e*C;ang=Math.PI/2;}
   else if(side===2){tx=X(u);ty=Y(PL_N)-e*C;ang=-Math.PI/2;}
   else if(side===3){tx=X(0)+e*C;ty=Y(u);ang=0;}
   else{tx=X(PL_N)-e*C;ty=Y(u);ang=Math.PI;}
-  c.translate(tx,ty);c.rotate(ang);
-  if(!inside||e>0.02){
-    // body behind the tip
-    c.fillStyle='#b5652a';c.strokeStyle='#2a160a';c.lineWidth=3;
-    thRound(c,-L-C*0.28,-w/2,L,w,w*0.25);c.fill();c.stroke();
-    c.fillStyle='rgba(255,255,255,.12)';c.fillRect(-L-C*0.2,-w*0.32,L-C*0.1,w*0.14);
-    c.fillStyle='rgba(60,25,8,.3)';c.fillRect(-L-C*0.2,w*0.12,L-C*0.1,w*0.12);
-    // steel collar + spike
-    c.fillStyle='#d8e0e8';c.fillRect(-C*0.32,-w*0.55,C*0.08,w*1.1);c.strokeRect(-C*0.32,-w*0.55,C*0.08,w*1.1);
-    c.beginPath();c.moveTo(-C*0.26,-w*0.46);c.lineTo(0,0);c.lineTo(-C*0.26,w*0.46);c.closePath();c.fillStyle='#eef3f7';c.fill();c.stroke();
-    c.fillStyle='rgba(150,165,180,.6)';c.beginPath();c.moveTo(-C*0.26,0);c.lineTo(0,0);c.lineTo(-C*0.26,w*0.46);c.closePath();c.fill();
-  }
+  c.save();c.translate(tx+o,ty+o);c.rotate(ang);
+  const x0=-sp-cl-L; // the log runs on far outside the screen
+  if(shadow){ // silhouette only
+    c.beginPath();c.rect(x0,-w/2,L,w);c.rect(-sp-cl,-w*0.56,cl,w*1.12);c.moveTo(-sp,-w*0.5);c.lineTo(0,0);c.lineTo(-sp,w*0.5);c.closePath();c.fill();c.restore();return;}
+  const lw=Math.max(3,C*0.045);c.lineJoin='round';c.strokeStyle='#000';c.lineWidth=lw;
+  c.fillStyle='#ab5a22';c.fillRect(x0,-w/2,L,w);
+  c.fillStyle='#8f4719';c.fillRect(x0,-w/2,L,w*0.3);
+  c.fillStyle='#bf6728';c.fillRect(x0,w*0.18,L,w*0.32);
+  c.fillStyle='rgba(120,55,15,.75)';
+  for(let k=0;k<PL_N+3;k++){const gx=-sp-cl-C*(0.55+k*0.95),gy=((k*37+lane*13)%3-1)*w*0.22;thRound(c,gx-C*0.24,gy-C*0.05,C*0.48,C*0.1,C*0.05);c.fill();}
+  c.strokeRect(x0,-w/2,L,w);
+  c.fillStyle='#c9d6d4';thRound(c,-sp-cl,-w*0.56,cl,w*1.12,cl*0.45);c.fill();c.stroke();
+  c.fillStyle='#e8f2ef';c.fillRect(-sp-cl*0.75,-w*0.45,cl*0.3,w*0.9);
+  c.beginPath();c.moveTo(-sp,-w*0.5);c.lineTo(0,0);c.lineTo(-sp,w*0.5);c.closePath();c.fillStyle='#b4cbc8';c.fill();
+  c.beginPath();c.moveTo(-sp,w*0.05);c.lineTo(0,0);c.lineTo(-sp,w*0.5);c.closePath();c.fillStyle='#f4fbf9';c.fill();
+  c.beginPath();c.moveTo(-sp,-w*0.5);c.lineTo(0,0);c.lineTo(-sp,-w*0.12);c.closePath();c.fillStyle='#93aaa8';c.fill();
+  c.beginPath();c.moveTo(-sp,-w*0.5);c.lineTo(0,0);c.lineTo(-sp,w*0.5);c.closePath();c.stroke();
   c.restore();
 }
 function plDrawPlayer(c,p,X,Y,C){
@@ -2855,7 +2886,7 @@ showHub();
 requestAnimationFrame(frame);
 
 // test hook
-window.__plf=plFrame;window.__T={plHit,PL,plStart,plActive,plExt,plRect,plClipLen,startSpikesOnline,TH,thStart,thThrow,thSimulate,thBotPlan,showHub,thShowMenu,startThrowOnline,VOICE,setTalking,acquireMic,watchDuel,sfx,headPos,__spawn:(x,y,vx,vy)=>spawnBullet(x,y,vx,vy,"e",0),BT,NET,OPP,damagePlayer,get audio(){return {ac:AC&&AC.state,buf:BUF?Object.keys(BUF).length:0}},step,get G(){return G},get player(){return player},get enemies(){return enemies},startLevel,playerShoot,get mode(){return mode}};
+window.__plf=plFrame;window.__PLF=PL_FIELDS;window.__plMake=plMakeMatch;window.__T={plHit,PL,plStart,plActive,plExt,plRect,plClipLen,startSpikesOnline,TH,thStart,thThrow,thSimulate,thBotPlan,showHub,thShowMenu,startThrowOnline,VOICE,setTalking,acquireMic,watchDuel,sfx,headPos,__spawn:(x,y,vx,vy)=>spawnBullet(x,y,vx,vy,"e",0),BT,NET,OPP,damagePlayer,get audio(){return {ac:AC&&AC.state,buf:BUF?Object.keys(BUF).length:0}},step,get G(){return G},get player(){return player},get enemies(){return enemies},startLevel,playerShoot,get mode(){return mode}};
 })();
 </script>
 </body>
