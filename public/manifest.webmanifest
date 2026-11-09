@@ -1,6 +1,6 @@
 {
-  "name": "Terugslag – Gun Duel",
-  "short_name": "Terugslag",
+  "name": "Duel Arcade",
+  "short_name": "Duel Arcade",
   "start_url": "/",
   "display": "fullscreen",
   "orientation": "portrait",
