@@ -559,7 +559,7 @@ const sfx={
         voice('sine',0.25,t=>500*Math.exp(-t*8)+120,env(0.003,0.24),0,1.1);
     }
   },
-  step(left,vol=1){if(!AC||!noiseBuf)return;const j=0.9+Math.random()*0.2;noise(0.035,(left?1050:1250)*j,0.1*vol,'lowpass',1.4);tone((left?165:180)*j,95,0.028,0.05*vol,'sine');},
+  step(left,vol=1){if(!AC||!noiseBuf)return;const j=0.9+Math.random()*0.2;noise(0.018,(left?2300:2700)*j,0.08*vol,'bandpass',2.2);tone((left?310:350)*j,200,0.016,0.035*vol,'triangle');},
   stab(){noise(0.16,1800,0.5,'bandpass',1.2);tone(180,90,0.12,0.4,'triangle',0.05);tone(70,45,0.15,0.35,'sine',0.08);},
   bonk(){ // cartoon bonk + "oof"
     if(!AC)return;tone(520,260,0.09,0.45,'triangle');tone(150,80,0.14,0.4,'sine');
@@ -2674,10 +2674,10 @@ function plFrame(rdt){
     const spd=Math.hypot(p.vx,p.vy);
     if(spd>0.35){
       const ta=Math.atan2(p.vy,p.vx);let da=((ta-p.ang+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;p.ang+=da*(1-Math.exp(-12*dt));
-      const before=Math.floor(p.walk/Math.PI);p.walk+=dt*spd*7.5;
+      const before=Math.floor(p.walk/Math.PI);p.walk+=dt*spd*11.5;
       if(Math.floor(p.walk/Math.PI)!==before){ // a foot touches the ground
         p.stepSide=-p.stepSide;const nx=-Math.sin(p.ang),ny=Math.cos(p.ang);
-        PL.steps.push({x:p.x+nx*0.07*p.stepSide+Math.cos(p.ang)*0.04,y:p.y+ny*0.07*p.stepSide+Math.sin(p.ang)*0.04,a:p.ang,t:2.2});
+        PL.steps.push({x:p.x+nx*0.05*p.stepSide+Math.cos(p.ang)*0.05,y:p.y+ny*0.05*p.stepSide+Math.sin(p.ang)*0.05,a:p.ang,t:2.2});
         const vol=(PL.online&&i!==PL.myIdx)?0.5:1;sfx.step(p.stepSide>0,vol);
       }
     }else{p.walk+=(Math.round(p.walk/Math.PI)*Math.PI-p.walk)*(1-Math.exp(-10*dt));}
@@ -2693,7 +2693,7 @@ function plFrame(rdt){
     for(let i=0;i<2;i++){if(PL.online&&i!==PL.myIdx)continue;const p=PL.players[i];if(!p.dead&&plCircleRect(p.x,p.y,PL_R*0.85,q))plHit(i);}
   }
   for(const q of PL.parts){q.x+=q.vx*dt;q.y+=q.vy*dt;q.vx*=Math.exp(-3*dt);q.vy*=Math.exp(-3*dt);q.t-=dt;}PL.parts=PL.parts.filter(q=>q.t>0);
-  for(const s of PL.steps)s.t-=dt;PL.steps=PL.steps.filter(s=>s.t>0);if(PL.steps.length>140)PL.steps.splice(0,PL.steps.length-140);
+  for(const s of PL.steps)s.t-=dt;PL.steps=PL.steps.filter(s=>s.t>0);if(PL.steps.length>200)PL.steps.splice(0,PL.steps.length-200);
   PL.shake*=Math.exp(-7*dt);
   if(PL.online){plSend(false);updateVoiceMeters(rdt);}
   plDraw(now);
@@ -2739,7 +2739,7 @@ function plDraw(now){
         if(p.side===1)c.fillRect(X(PL_N)+F*0.27,Y(u),th,(u2-u)*C);}}
   }
   // footprints
-  for(const s of PL.steps){c.fillStyle=FL.foot;c.globalAlpha=Math.min(1,s.t/2.2)*0.4;c.beginPath();c.ellipse(X(s.x),Y(s.y),C*0.042,C*0.024,s.a,0,Math.PI*2);c.fill();}c.globalAlpha=1;
+  for(const s of PL.steps){c.fillStyle=FL.foot;c.globalAlpha=Math.min(1,s.t/2.2)*0.4;c.beginPath();c.ellipse(X(s.x),Y(s.y),C*0.028,C*0.017,s.a,0,Math.PI*2);c.fill();}c.globalAlpha=1;
   // stones - the only thing that stops a stake
   for(const [cx,cy] of PL.pillars){
     const x=X(cx)+C*0.02,y=Y(cy)+C*0.02,w=C*0.96,r=C*0.13,lw=Math.max(3,C*0.045);
@@ -2802,7 +2802,7 @@ function plDrawPlayer(c,p,X,Y,C){
   if(p.dead&&PL.phase!=='over'&&Math.floor(PL.clock*8)%2===0)return;
   if(p.inv>0&&!p.dead&&Math.floor(p.inv*12)%2===0)return; // blink while invulnerable
   const x=X(p.x),y=Y(p.y),u=C*0.4; // u = body unit
-  const sw=Math.sin(p.walk),stride=u*0.3*sw;
+  const sw=Math.sin(p.walk),stride=u*0.16*sw;
   const skin='#'+FACES[p.face].skin.toString(16).padStart(6,'0');
   // shadow
   c.fillStyle='rgba(0,0,0,.2)';c.beginPath();c.ellipse(x+2,y+u*0.25,u*1.05,u*0.8,0,0,Math.PI*2);c.fill();
@@ -2810,8 +2810,8 @@ function plDrawPlayer(c,p,X,Y,C){
   c.lineJoin='round';c.strokeStyle='#1d1d1d';c.lineWidth=Math.max(2,u*0.09);
   // feet (alternate forward/back)
   c.fillStyle='#2a2320';
-  c.beginPath();c.ellipse(stride,-u*0.33,u*0.32,u*0.17,0,0,Math.PI*2);c.fill();c.stroke();
-  c.beginPath();c.ellipse(-stride,u*0.33,u*0.32,u*0.17,0,0,Math.PI*2);c.fill();c.stroke();
+  c.beginPath();c.ellipse(stride+u*0.3,-u*0.24,u*0.2,u*0.12,0,0,Math.PI*2);c.fill();c.stroke();
+  c.beginPath();c.ellipse(-stride+u*0.3,u*0.24,u*0.2,u*0.12,0,0,Math.PI*2);c.fill();c.stroke();
   // arms swing opposite to the feet
   c.fillStyle=p.color;
   c.beginPath();c.ellipse(-stride*0.8,-u*0.72,u*0.26,u*0.15,0,0,Math.PI*2);c.fill();c.stroke();
