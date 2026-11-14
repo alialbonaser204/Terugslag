@@ -1,28 +1,24 @@
-# Terugslag – Gun Duel
+# Duel Arcade
 
-Een 3D-schietspel waarin je beweegt met de terugslag van je pistool. Je kunt alleen spelen (10 levels) of online 1 tegen 1 tegen een vriend.
+Three 2-player games in an Arabian desert style: **Recoil** (gun duel), **Throw** (ball fight) and **Spikes** (dodge the stakes). Play against a bot, a friend on the same phone, or online 1 vs 1 with push-to-talk voice.
 
-## Lokaal starten
+## Hosting on Cloudflare
 
-```bash
+The game runs on Cloudflare Workers:
+
+- `public/` holds the game (static assets).
+- `src/worker.js` relays online duels over WebSocket (`/ws`) through one Durable Object.
+- `wrangler.jsonc` holds the configuration.
+
+Deploy:
+
+```
 npm install
-npm start
+npx wrangler deploy
 ```
 
-Open daarna http://localhost:3000
+Or connect this repository in the Cloudflare dashboard (Workers & Pages → Create → Import a repository). Every push to `main` then deploys automatically.
 
-## Online zetten op Railway
+Run it locally with `npx wrangler dev`.
 
-1. Zet deze map in een GitHub-repository. De map `node_modules` hoort er niet bij.
-2. Ga naar https://railway.com, log in met GitHub en kies **New Project → Deploy from GitHub repo**. Kies daar je repository.
-3. Railway ziet zelf dat het een Node-project is en start het met `npm start`. De server gebruikt automatisch de `PORT` die Railway opgeeft.
-4. Ga naar **Settings → Networking → Generate Domain**. Je krijgt dan een link, bijvoorbeeld `terugslag-production.up.railway.app`.
-5. Stuur die link naar je vrienden. Online spelen werkt zo:
-   - De ene speler tikt op **Online 1 tegen 1** en daarna op **Nieuw duel maken**.
-   - De andere speler vult de code in of tikt op het duel in de lijst.
-
-## Bestanden
-
-- `server.js` – deelt de game uit en geeft de online duels door via een WebSocket (`/ws`)
-- `public/index.html` – de complete game
-- `public/three.min.js` – de 3D-engine (three.js r128)
+`server.js` is the old Node version (Railway) and is no longer needed on Cloudflare.

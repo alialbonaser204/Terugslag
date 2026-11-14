@@ -1,16 +1,18 @@
 {
-  "name": "terugslag",
+  "name": "duel-arcade",
   "version": "1.0.0",
   "private": true,
-  "description": "Terugslag – Gun Duel: recoil shooter with online 1v1",
-  "main": "server.js",
+  "description": "Duel Arcade \u2013 Recoil, Throw and Spikes: 2-player games with online 1v1 (Cloudflare Workers)",
+  "main": "src/worker.js",
   "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
     "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=18"
   },
   "dependencies": {
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.162.0"
   }
 }
